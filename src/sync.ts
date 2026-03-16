@@ -47,7 +47,7 @@ export interface VaultFileRow {
 
 export interface SyncHost {
 	readonly vault: Vault;
-	/** Settings object — properties are mutated in-place across saves. */
+	/** Settings object - properties are mutated in-place across saves. */
 	readonly settings: {
 		vaultId: string;
 		syncIntervalMinutes: number;
@@ -88,8 +88,10 @@ export class SyncEngine {
 	}
 
 	private isSystemPath(filePath: string): boolean {
+		const configDir = this.host.vault.configDir;
 		return (
-			filePath.startsWith(".obsidian/") || filePath.startsWith(".trash/")
+			filePath.startsWith(`${configDir}/`) ||
+			filePath.startsWith(".trash/")
 		);
 	}
 
@@ -116,7 +118,7 @@ export class SyncEngine {
 				try {
 					await this.host.vault.createFolder(current);
 				} catch {
-					// Concurrent creation race — safe to ignore.
+					// Folder already exists
 				}
 			}
 		}
@@ -140,7 +142,7 @@ export class SyncEngine {
 				err,
 			);
 			new Notice(
-				`SupaBase Jump: push failed for "${file.path}" — ${msg}`,
+				`SupaBase Jump: push failed for "${file.path}" - ${msg}`,
 			);
 			throw err; // re-throw so fullSync can count errors
 		}
@@ -157,7 +159,7 @@ export class SyncEngine {
 			data = await this.host.vault.readBinary(file);
 		} catch (err) {
 			throw new Error(
-				`could not read "${file.path}" — ${err instanceof Error ? err.message : String(err)}`,
+				`could not read "${file.path}" - ${err instanceof Error ? err.message : String(err)}`,
 			);
 		}
 
@@ -168,7 +170,7 @@ export class SyncEngine {
 			.upload(storagePath, data, { upsert: true });
 
 		if (uploadErr)
-			throw new Error(`storage upload failed — ${uploadErr.message}`);
+			throw new Error(`storage upload failed - ${uploadErr.message}`);
 
 		const { error: dbErr } = await this.client.from(DB_TABLE).upsert({
 			id: rowId,
@@ -185,7 +187,7 @@ export class SyncEngine {
 			updated_at: new Date().toISOString(),
 		});
 
-		if (dbErr) throw new Error(`metadata upsert failed — ${dbErr.message}`);
+		if (dbErr) throw new Error(`metadata upsert failed - ${dbErr.message}`);
 	}
 
 	private async pushTextFile(
@@ -199,7 +201,7 @@ export class SyncEngine {
 			content = await this.host.vault.read(file);
 		} catch (err) {
 			throw new Error(
-				`could not read "${file.path}" — ${err instanceof Error ? err.message : String(err)}`,
+				`could not read "${file.path}" - ${err instanceof Error ? err.message : String(err)}`,
 			);
 		}
 
@@ -218,7 +220,7 @@ export class SyncEngine {
 			updated_at: new Date().toISOString(),
 		});
 
-		if (error) throw new Error(`upsert failed — ${error.message}`);
+		if (error) throw new Error(`upsert failed - ${error.message}`);
 	}
 
 	async pullFile(row: VaultFileRow): Promise<void> {
@@ -236,7 +238,7 @@ export class SyncEngine {
 				`SupaBase Jump: pullFile failed for "${row.path}"`,
 				err,
 			);
-			new Notice(`SupaBase Jump: pull failed for "${row.path}" — ${msg}`);
+			new Notice(`SupaBase Jump: pull failed for "${row.path}" - ${msg}`);
 			throw err; // re-throw so fullSync can count errors
 		}
 	}
@@ -252,15 +254,13 @@ export class SyncEngine {
 
 		if (error || !data) {
 			throw new Error(
-				`storage download failed — ${error?.message ?? "no data returned"}`,
+				`storage download failed - ${error?.message ?? "no data returned"}`,
 			);
 		}
 
 		const buffer = await data.arrayBuffer();
 		this.markIgnore(row.path);
 
-		// Re-check existence right before writing — the file may have been
-		// created or deleted during the async download.
 		const live = this.host.vault.getAbstractFileByPath(row.path);
 		try {
 			if (live instanceof TFile) {
@@ -269,12 +269,11 @@ export class SyncEngine {
 				await this.host.vault.createBinary(row.path, buffer);
 			}
 		} catch {
-			// File was deleted between our check and the write — retry as create.
 			try {
 				await this.host.vault.createBinary(row.path, buffer);
 			} catch (createErr) {
 				throw new Error(
-					`vault write failed for "${row.path}" — ${createErr instanceof Error ? createErr.message : String(createErr)}`,
+					`vault write failed for "${row.path}" - ${createErr instanceof Error ? createErr.message : String(createErr)}`,
 				);
 			}
 		}
@@ -284,7 +283,6 @@ export class SyncEngine {
 		const content = row.content ?? "";
 		this.markIgnore(row.path);
 
-		// Fresh lookup right before the write — safer than caching from pullFile.
 		const live = this.host.vault.getAbstractFileByPath(row.path);
 		try {
 			if (live instanceof TFile) {
@@ -293,12 +291,11 @@ export class SyncEngine {
 				await this.host.vault.create(row.path, content);
 			}
 		} catch {
-			// File was deleted between our check and the write — retry as create.
 			try {
 				await this.host.vault.create(row.path, content);
 			} catch (createErr) {
 				throw new Error(
-					`vault write failed for "${row.path}" — ${createErr instanceof Error ? createErr.message : String(createErr)}`,
+					`vault write failed for "${row.path}" - ${createErr instanceof Error ? createErr.message : String(createErr)}`,
 				);
 			}
 		}
@@ -317,7 +314,7 @@ export class SyncEngine {
 
 			if (fetchErr)
 				throw new Error(
-					`could not fetch row for "${path}" — ${fetchErr.message}`,
+					`could not fetch row for "${path}" - ${fetchErr.message}`,
 				);
 
 			const { error: updateErr } = await this.client
@@ -326,7 +323,7 @@ export class SyncEngine {
 				.eq("id", rowId);
 
 			if (updateErr)
-				throw new Error(`soft delete failed — ${updateErr.message}`);
+				throw new Error(`soft delete failed - ${updateErr.message}`);
 
 			if (data?.is_binary && data.storage_path) {
 				const { error: storageErr } = await this.client.storage
@@ -334,9 +331,8 @@ export class SyncEngine {
 					.remove([data.storage_path]);
 
 				if (storageErr) {
-					// Non-fatal: metadata row is already soft-deleted.
 					console.warn(
-						`SupaBase Jump: storage removal failed — ${storageErr.message}`,
+						`SupaBase Jump: storage removal failed - ${storageErr.message}`,
 					);
 				}
 			}
@@ -346,7 +342,7 @@ export class SyncEngine {
 				`SupaBase Jump: deleteRemoteFile failed for "${path}"`,
 				err,
 			);
-			new Notice(`SupaBase Jump: delete failed for "${path}" — ${msg}`);
+			new Notice(`SupaBase Jump: delete failed for "${path}" - ${msg}`);
 			throw err;
 		}
 	}
@@ -355,7 +351,7 @@ export class SyncEngine {
 		const { vaultId } = this.host.settings;
 
 		if (!vaultId) {
-			new Notice("SupaBase Jump: Vault ID is not set — cannot fetch.");
+			new Notice("supabase jump: vault id is not set - cannot fetch");
 			return;
 		}
 
@@ -371,7 +367,7 @@ export class SyncEngine {
 
 			if (error)
 				throw new Error(
-					`failed to fetch remote files — ${error.message}`,
+					`failed to fetch remote files - ${error.message}`,
 				);
 
 			const remoteRows = (data as VaultFileRow[]) ?? [];
@@ -400,13 +396,13 @@ export class SyncEngine {
 
 			const s = errors.length;
 			const suffix =
-				s > 0 ? ` (${s} error${s > 1 ? "s" : ""} — see console)` : "";
+				s > 0 ? ` (${s} error${s > 1 ? "s" : ""} - see console)` : "";
 			new Notice(`SupaBase Jump: fetch complete${suffix}`);
 		} catch (err) {
 			console.error("SupaBase Jump: fetchOnly failed", err);
 			this.host.setStatus("error");
 			new Notice(
-				`SupaBase Jump: fetch failed — ${err instanceof Error ? err.message : String(err)}`,
+				`SupaBase Jump: fetch failed - ${err instanceof Error ? err.message : String(err)}`,
 			);
 		}
 	}
@@ -415,7 +411,7 @@ export class SyncEngine {
 		const { vaultId } = this.host.settings;
 
 		if (!vaultId) {
-			new Notice("SupaBase Jump: Vault ID is not set — cannot sync.");
+			new Notice("supabase jump: vault id is not set - cannot sync");
 			return;
 		}
 
@@ -423,7 +419,6 @@ export class SyncEngine {
 		const errors: string[] = [];
 
 		try {
-			// 1. Fetch all non-deleted remote rows for this vault.
 			const { data, error } = await this.client
 				.from(DB_TABLE)
 				.select("*")
@@ -432,7 +427,7 @@ export class SyncEngine {
 
 			if (error)
 				throw new Error(
-					`failed to fetch remote files — ${error.message}`,
+					`failed to fetch remote files - ${error.message}`,
 				);
 
 			const remoteRows = (data as VaultFileRow[]) ?? [];
@@ -440,7 +435,6 @@ export class SyncEngine {
 				remoteRows.map((r) => [r.path, r]),
 			);
 
-			// 2. Get all local files, excluding system/excluded paths.
 			const localFiles = this.host.vault
 				.getFiles()
 				.filter((f) => !this.shouldSkip(f.path));
@@ -448,19 +442,17 @@ export class SyncEngine {
 				localFiles.map((f) => [f.path, f]),
 			);
 
-			// 3. Push local files that are newer than (or absent from) the remote.
 			for (const file of localFiles) {
 				const remote = remoteMap.get(file.path);
 				if (!remote || file.stat.mtime > remote.mtime) {
 					try {
 						await this.pushFile(file);
 					} catch {
-						errors.push(file.path); // Notice already shown inside pushFile
+						errors.push(file.path);
 					}
 				}
 			}
 
-			// 4. Pull remote rows that are newer than (or absent from) the local vault.
 			for (const row of remoteRows) {
 				if (this.shouldSkip(row.path)) continue;
 				const local = localMap.get(row.path);
@@ -468,12 +460,11 @@ export class SyncEngine {
 					try {
 						await this.pullFile(row);
 					} catch {
-						errors.push(row.path); // Notice already shown inside pullFile
+						errors.push(row.path);
 					}
 				}
 			}
 
-			// 5. Persist last-sync timestamp.
 			this.host.settings.lastSyncTime = Date.now();
 			await this.host.saveSettings();
 
@@ -481,13 +472,13 @@ export class SyncEngine {
 
 			const s = errors.length;
 			const suffix =
-				s > 0 ? ` (${s} error${s > 1 ? "s" : ""} — see console)` : "";
+				s > 0 ? ` (${s} error${s > 1 ? "s" : ""} - see console)` : "";
 			new Notice(`SupaBase Jump: sync complete${suffix}`);
 		} catch (err) {
 			console.error("SupaBase Jump: fullSync failed", err);
 			this.host.setStatus("error");
 			new Notice(
-				`SupaBase Jump: sync failed — ${err instanceof Error ? err.message : String(err)}`,
+				`SupaBase Jump: sync failed - ${err instanceof Error ? err.message : String(err)}`,
 			);
 		}
 	}
@@ -513,19 +504,17 @@ export class SyncEngine {
 							err,
 						);
 						new Notice(
-							`SupaBase Jump: realtime error — ${err instanceof Error ? err.message : String(err)}`,
+							`SupaBase Jump: realtime error - ${err instanceof Error ? err.message : String(err)}`,
 						);
 					});
 				},
 			)
-			.subscribe((status) => {
-				if (status === "SUBSCRIBED") {
-					console.log("SupaBase Jump: realtime channel subscribed");
-				} else if (status === "CHANNEL_ERROR") {
+			.subscribe((status: string) => {
+				if (status === "CHANNEL_ERROR") {
 					console.error("SupaBase Jump: realtime channel error");
 					this.host.setStatus("error");
 					new Notice(
-						"SupaBase Jump: realtime channel error — check Supabase project status.",
+						"Supabase jump: realtime channel error - check supabase project status",
 					);
 				}
 			});
@@ -542,7 +531,6 @@ export class SyncEngine {
 	}): Promise<void> {
 		const { eventType, new: newRow, old: oldRow } = payload;
 
-		// Hard DELETE (uncommon with soft-delete, but handled defensively).
 		if (eventType === "DELETE") {
 			const path = oldRow.path;
 			if (path) await this.deleteLocalFile(path);
@@ -552,13 +540,11 @@ export class SyncEngine {
 		const row = newRow as VaultFileRow;
 		if (!row?.path) return;
 
-		// Soft-delete propagated from another client.
 		if (row.deleted) {
 			await this.deleteLocalFile(row.path);
 			return;
 		}
 
-		// INSERT / UPDATE: pull if remote is newer than the local copy.
 		const localFile = this.host.vault.getAbstractFileByPath(row.path);
 		const localMtime =
 			localFile instanceof TFile ? localFile.stat.mtime : 0;
@@ -574,9 +560,8 @@ export class SyncEngine {
 		if (!file) return;
 		this.markIgnore(path);
 		try {
-			await this.host.vault.delete(file);
+			await this.host.vault.adapter.trashLocal(file.path);
 		} catch (err) {
-			// File may have already been deleted locally — log and continue.
 			console.warn(
 				`SupaBase Jump: deleteLocalFile failed for "${path}"`,
 				err,
@@ -589,10 +574,11 @@ export class SyncEngine {
 		if (syncIntervalMinutes <= 0) return;
 
 		this.syncIntervalId = window.setInterval(
-			() =>
-				this.fullSync().catch((err) =>
+			() => {
+				void this.fullSync().catch((err) =>
 					console.error("SupaBase Jump: auto-sync error", err),
-				),
+				);
+			},
 			syncIntervalMinutes * 60 * 1000,
 		);
 	}
@@ -622,12 +608,11 @@ export class SyncEngine {
 				if (type === "push") {
 					const file = this.host.vault.getAbstractFileByPath(path);
 					if (file instanceof TFile) await this.pushFile(file);
-					// File no longer exists — nothing to push; skip silently.
 				} else {
 					await this.deleteRemoteFile(path);
 				}
 			} catch {
-				// pushFile / deleteRemoteFile already showed a Notice; just continue.
+				// Error already logged
 			}
 		}
 	}

@@ -64,7 +64,9 @@ function extractErrorMessage(body: string, status: number): string {
 		const parsed = JSON.parse(body) as Record<string, unknown>;
 		if (typeof parsed.message === "string") return parsed.message;
 		if (typeof parsed.error === "string") return parsed.error;
-	} catch {}
+	} catch {
+		// Invalid JSON
+	}
 	return body.trim() || `HTTP ${status}`;
 }
 import { SupabaseClient } from "@supabase/supabase-js";
@@ -106,13 +108,10 @@ export default class SupaBaseJumpPlugin extends Plugin {
 		if (this.settings.supabaseUrl && this.settings.email) {
 			await this.initSupabase();
 		}
-
-		console.log("SupaBase Jump: loaded");
 	}
 
 	onunload() {
 		this.cleanup();
-		console.log("SupaBase Jump: unloaded");
 	}
 
 	async loadSettings() {
@@ -132,12 +131,11 @@ export default class SupaBaseJumpPlugin extends Plugin {
 	}
 
 	async initSupabase(): Promise<void> {
-		// Stop any previous session before reinitialising (e.g. from settings tab).
 		this.syncEngine.stopAll();
 
 		await this.manager.init();
 
-		if (!this.supabase) return; // connection failed — manager already reported error
+		if (!this.supabase) return; // connection failed - manager already reported error
 
 		this.syncEngine.startRealtimeListener();
 
@@ -233,7 +231,6 @@ export default class SupaBaseJumpPlugin extends Plugin {
 				"rename",
 				(file: TAbstractFile, oldPath: string) => {
 					if (file instanceof TFile) {
-						// Treat a rename as a remote delete of the old path + push of the new.
 						this.syncEngine.queueChange(oldPath, "delete");
 						this.syncEngine.queueChange(file.path, "push");
 					}
@@ -273,7 +270,6 @@ export default class SupaBaseJumpPlugin extends Plugin {
 		if (!personalAccessToken)
 			throw new Error("Personal Access Token is required.");
 
-		// Extract project ref from the hostname: <ref>.supabase.co
 		const ref = new URL(supabaseUrl).hostname.split(".")[0];
 
 		const headers: Record<string, string> = {
@@ -322,17 +318,19 @@ export default class SupaBaseJumpPlugin extends Plugin {
 					}),
 					throw: false,
 				});
-				bucketOk = res.status === 409 || (res.status >= 200 && res.status < 300);
+				bucketOk =
+					res.status === 409 ||
+					(res.status >= 200 && res.status < 300);
 				if (!bucketOk) {
 					const msg = extractErrorMessage(res.text, res.status);
 					console.warn(
-						"SupaBase Jump: bucket creation via API failed —",
+						"SupaBase Jump: bucket creation via API failed -",
 						msg,
 					);
 				}
 			} catch (err) {
 				console.warn(
-					"SupaBase Jump: bucket creation request failed —",
+					"SupaBase Jump: bucket creation request failed -",
 					err,
 				);
 			}
@@ -343,7 +341,7 @@ export default class SupaBaseJumpPlugin extends Plugin {
 						"Create it manually: Supabase \u2192 Storage \u2192 New bucket\n" +
 						"  Name: vault-attachments\n" +
 						"  Public: OFF\n\n" +
-						"Then continue — the RLS policy was applied in step 3.",
+						"Then continue - the RLS policy was applied in step 3.",
 					14000,
 				);
 			}
@@ -360,7 +358,7 @@ export default class SupaBaseJumpPlugin extends Plugin {
 		}
 
 		new Notice(
-			"SupaBase Jump: All set! Table, bucket, and Realtime enabled ✓",
+			"supabase jump: all set - table, bucket, and realtime enabled ✓",
 		);
 	}
 }

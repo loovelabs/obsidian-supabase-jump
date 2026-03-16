@@ -73,9 +73,6 @@ export function isExcluded(
 	});
 }
 
-// ─── Settings tab ─────────────────────────────────────────────────────────────
-
-/** Shown in the collapsible guide as a manual-setup fallback. */
 const SETUP_SQL = `-- vault_files table
 CREATE TABLE IF NOT EXISTS vault_files (
   id           text primary key,
@@ -129,18 +126,15 @@ export class SupaBaseJumpSettingTab extends PluginSettingTab {
 		const { containerEl } = this;
 		containerEl.empty();
 
-		containerEl.createEl("h2", { text: "SupaBase Jump" });
-
-		// ── Initial Setup ─────────────────────────────────────────────────────
-		containerEl.createEl("h3", { text: "Initial setup" });
+		new Setting(containerEl).setName("Initial setup").setHeading();
 
 		new Setting(containerEl)
 			.setName("Personal access token")
 			.setDesc(
-				"Generate at supabase.com/dashboard/account/tokens — only needed for this setup step, can be cleared after.",
+				"Generate at supabase.com/dashboard/account/tokens - only needed for this setup step, can be cleared after",
 			)
 			.addText((text) => {
-				text.setPlaceholder("sbp_…")
+				text.setPlaceholder("sbp_...")
 					.setValue(this.plugin.settings.personalAccessToken)
 					.onChange(async (value) => {
 						this.plugin.settings.personalAccessToken = value.trim();
@@ -152,7 +146,7 @@ export class SupaBaseJumpSettingTab extends PluginSettingTab {
 		new Setting(containerEl)
 			.setName("One-click project setup")
 			.setDesc(
-				"Creates the vault_files table, enables Realtime, and creates the vault-attachments storage bucket. Run once after creating your Supabase project.",
+				"creates the vault_files table, enables realtime, and creates the vault-attachments storage bucket; run once after creating your supabase project",
 			)
 			.addButton((btn) => {
 				btn.setButtonText("Run full setup").setCta();
@@ -170,7 +164,6 @@ export class SupaBaseJumpSettingTab extends PluginSettingTab {
 				});
 			});
 
-		// ── Manual setup guide (fallback) ─────────────────────────────────────
 		const guide = containerEl.createEl("details", {
 			cls: "sbj-setup-guide",
 		});
@@ -187,8 +180,7 @@ export class SupaBaseJumpSettingTab extends PluginSettingTab {
 
 		guide.createEl("pre", { text: SETUP_SQL, cls: "sbj-sql-block" });
 
-		// ── Supabase credentials ─────────────────────────────────────────────
-		containerEl.createEl("h3", { text: "Supabase credentials" });
+		new Setting(containerEl).setName("Supabase credentials").setHeading();
 
 		new Setting(containerEl)
 			.setName("Project URL")
@@ -204,10 +196,10 @@ export class SupaBaseJumpSettingTab extends PluginSettingTab {
 			);
 
 		new Setting(containerEl)
-			.setName("Anon / public key")
-			.setDesc("Found under Project Settings → API.")
+			.setName("Anon/public key")
+			.setDesc("found under project settings → api")
 			.addText((text) => {
-				text.setPlaceholder("eyJ…")
+				text.setPlaceholder("eyJ...")
 					.setValue(this.plugin.settings.supabaseAnonKey)
 					.onChange(async (value) => {
 						this.plugin.settings.supabaseAnonKey = value.trim();
@@ -216,12 +208,11 @@ export class SupaBaseJumpSettingTab extends PluginSettingTab {
 				text.inputEl.type = "password";
 			});
 
-		// ── Account ──────────────────────────────────────────────────────────
-		containerEl.createEl("h3", { text: "Account" });
+		new Setting(containerEl).setName("Account").setHeading();
 
 		new Setting(containerEl)
 			.setName("Email")
-			.setDesc("Supabase Auth email address.")
+			.setDesc("supabase auth email address")
 			.addText((text) =>
 				text
 					.setPlaceholder("you@example.com")
@@ -245,7 +236,7 @@ export class SupaBaseJumpSettingTab extends PluginSettingTab {
 		new Setting(containerEl)
 			.setName("Connect")
 			.setDesc(
-				"Sign in (or create an account) using the credentials above.",
+				"Sign in (or create an account) using the credentials above",
 			)
 			.addButton((btn) =>
 				btn
@@ -266,14 +257,13 @@ export class SupaBaseJumpSettingTab extends PluginSettingTab {
 				}),
 			);
 
-		// ── Vault ─────────────────────────────────────────────────────────────
-		containerEl.createEl("h3", { text: "Vault" });
+		new Setting(containerEl).setName("Vault").setHeading();
 
 		let vaultIdText: TextComponent;
 		new Setting(containerEl)
 			.setName("Vault ID")
 			.setDesc(
-				"Unique identifier for this vault. Files are namespaced under this ID in Supabase Storage. Each vault syncing to the same Supabase project needs a different ID.",
+				"unique identifier for this vault; files are namespaced under this id in supabase storage; each vault syncing to the same supabase project needs a different id",
 			)
 			.addText((text) => {
 				vaultIdText = text;
@@ -287,9 +277,8 @@ export class SupaBaseJumpSettingTab extends PluginSettingTab {
 			.addButton((btn) =>
 				btn
 					.setButtonText("Generate")
-					.setTooltip("Auto-generate a unique Vault ID")
+					.setTooltip("Auto-generate a unique vault ID")
 					.onClick(async () => {
-						// Web Crypto API — no Node.js required.
 						const id = window.crypto
 							.randomUUID()
 							.replace(/-/g, "")
@@ -297,14 +286,14 @@ export class SupaBaseJumpSettingTab extends PluginSettingTab {
 						vaultIdText.setValue(id);
 						this.plugin.settings.vaultId = id;
 						await this.plugin.saveSettings();
-						new Notice("SupaBase Jump: Vault ID generated.");
+						new Notice("supabase jump: vault id generated");
 					}),
 			);
 
 		new Setting(containerEl)
 			.setName("Excluded folders")
 			.setDesc(
-				"Comma-separated list of folder paths to exclude from sync (e.g. templates, archive/old).",
+				"Comma-separated list of folder paths to exclude from sync (e.g. templates, archive/old)",
 			)
 			.addText((text) =>
 				text
@@ -319,12 +308,11 @@ export class SupaBaseJumpSettingTab extends PluginSettingTab {
 					}),
 			);
 
-		// ── Sync behaviour ───────────────────────────────────────────────────
-		containerEl.createEl("h3", { text: "Sync behaviour" });
+		new Setting(containerEl).setName("Sync behaviour").setHeading();
 
 		new Setting(containerEl)
 			.setName("Sync on startup")
-			.setDesc("Run a full sync automatically when Obsidian opens.")
+			.setDesc("run a full sync automatically when obsidian opens")
 			.addToggle((toggle) =>
 				toggle
 					.setValue(this.plugin.settings.syncOnStartup)
@@ -337,7 +325,7 @@ export class SupaBaseJumpSettingTab extends PluginSettingTab {
 		new Setting(containerEl)
 			.setName("Sync interval (minutes)")
 			.setDesc(
-				"How often to sync in the background. Set to 0 to disable background sync.",
+				"how often to sync in the background; set to 0 to disable background sync",
 			)
 			.addSlider((slider) =>
 				slider
@@ -350,13 +338,12 @@ export class SupaBaseJumpSettingTab extends PluginSettingTab {
 					}),
 			);
 
-		// ── Actions ──────────────────────────────────────────────────────────
-		containerEl.createEl("h3", { text: "Actions" });
+		new Setting(containerEl).setName("Actions").setHeading();
 
 		new Setting(containerEl)
 			.setName("Force sync")
 			.setDesc(
-				"Immediately compare and reconcile all local and remote files.",
+				"immediately compare and reconcile all local and remote files",
 			)
 			.addButton((btn) =>
 				btn
@@ -375,7 +362,7 @@ export class SupaBaseJumpSettingTab extends PluginSettingTab {
 		new Setting(containerEl)
 			.setName("Fetch from database")
 			.setDesc(
-				"Download all remote changes to this device without pushing local files.",
+				"download all remote changes to this device without pushing local files",
 			)
 			.addButton((btn) =>
 				btn.setButtonText("Fetch now").onClick(async () => {
@@ -388,7 +375,6 @@ export class SupaBaseJumpSettingTab extends PluginSettingTab {
 				}),
 			);
 
-		// ── Status ───────────────────────────────────────────────────────────
 		if (this.plugin.settings.lastSyncTime > 0) {
 			const ts = new Date(
 				this.plugin.settings.lastSyncTime,

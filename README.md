@@ -18,13 +18,13 @@ https://github.com/user-attachments/assets/video-demo.mp4
 
 ## Features
 
-- **Real-time sync** — Changes propagate instantly across all your devices via Supabase Realtime
-- **Conflict resolution** — Newer files always win (based on modification time)
-- **Binary file support** — Images, PDFs, and other attachments sync via Supabase Storage
-- **Selective sync** — Exclude specific folders from syncing
-- **Mobile compatible** — Works on both desktop and mobile Obsidian
-- **One-click setup** — Automated database and storage configuration
-- **Offline-first** — Local changes are queued and synced when you reconnect
+- **Real-time sync** - Changes propagate instantly across all your devices via Supabase Realtime
+- **Conflict resolution** - Newer files always win (based on modification time)
+- **Binary file support** - Images, PDFs, and other attachments sync via Supabase Storage
+- **Selective sync** - Exclude specific folders from syncing
+- **Mobile compatible** - Works on both desktop and mobile Obsidian
+- **One-click setup** - Automated database and storage configuration
+- **Offline-first** - Local changes are queued and synced when you reconnect
 
 ## Quick Start
 
@@ -56,12 +56,12 @@ https://github.com/user-attachments/assets/video-demo.mp4
 2. In the **Initial Setup** section:
    - Generate a **Personal Access Token** at [supabase.com/dashboard/account/tokens](https://supabase.com/dashboard/account/tokens)
    - Paste it into the **Personal access token** field
-   - Click **Run full setup** — this creates the database table, storage bucket, and enables Realtime
+   - Click **Run full setup** - this creates the database table, storage bucket, and enables Realtime
 3. Fill in your credentials:
-   - **Supabase URL** — Your project URL (e.g., `https://xxxxx.supabase.co`)
-   - **Supabase anon key** — Your anon/public key
-   - **Email** — Your Supabase account email
-   - **Password** — Your Supabase account password
+   - **Supabase URL** - Your project URL (e.g., `https://xxxxx.supabase.co`)
+   - **Supabase anon key** - Your anon/public key
+   - **Email** - Your Supabase account email
+   - **Password** - Your Supabase account password
 4. Click **Connect**
 
 That's it! Your vault will start syncing automatically.
@@ -79,8 +79,8 @@ Once connected, the plugin automatically:
 ### Manual Sync
 
 Use the **Actions** section in settings:
-- **Sync now** — Full two-way sync (push + pull)
-- **Fetch now** — Pull remote changes without pushing local files
+- **Sync now** - Full two-way sync (push + pull)
+- **Fetch now** - Pull remote changes without pushing local files
 
 Or use the command palette:
 - `SupaBase Jump: Force sync now`
@@ -100,22 +100,22 @@ System folders (`.obsidian/`, `.trash/`) are always excluded automatically.
 
 ### Architecture
 
-- **Text files** (`.md`, `.txt`, etc.) — Content stored directly in the `vault_files` PostgreSQL table
-- **Binary files** (images, PDFs, etc.) — Uploaded to Supabase Storage; metadata in `vault_files`
-- **Realtime sync** — Supabase Realtime broadcasts changes to all connected clients
-- **Conflict resolution** — Higher `mtime` (modification time) wins
+- **Text files** (`.md`, `.txt`, etc.) - Content stored directly in the `vault_files` PostgreSQL table
+- **Binary files** (images, PDFs, etc.) - Uploaded to Supabase Storage; metadata in `vault_files`
+- **Realtime sync** - Supabase Realtime broadcasts changes to all connected clients
+- **Conflict resolution** - Higher `mtime` (modification time) wins
 
 ### Database Schema
 
 The plugin creates a `vault_files` table with:
-- `id` (primary key) — `{vaultId}::{filePath}` (slashes replaced with `__SLASH__`)
-- `vault_id` — Unique ID for your vault (auto-generated)
-- `path` — File path relative to vault root
-- `content` — File content (for text files)
-- `storage_path` — Supabase Storage key (for binary files)
-- `mtime`, `ctime`, `size` — File metadata
-- `deleted` — Soft-delete flag
-- `user_id` — Row-level security (RLS) ensures you only see your own files
+- `id` (primary key) - `{vaultId}::{filePath}` (slashes replaced with `__SLASH__`)
+- `vault_id` - Unique ID for your vault (auto-generated)
+- `path` - File path relative to vault root
+- `content` - File content (for text files)
+- `storage_path` - Supabase Storage key (for binary files)
+- `mtime`, `ctime`, `size` - File metadata
+- `deleted` - Soft-delete flag
+- `user_id` - Row-level security (RLS) ensures you only see your own files
 
 ### Storage Bucket
 
@@ -128,9 +128,9 @@ Binary files are stored in a private `vault-attachments` bucket with:
 
 ### "Setup failed at step 1/2/3"
 
-- **Step 1 (Database)** — Check your Personal Access Token is valid and has the required permissions
-- **Step 2 (Storage bucket)** — If auto-creation fails, manually create a bucket named `vault-attachments` (Private) in **Supabase → Storage**
-- **Step 3 (RLS policy)** — Ensure your Supabase project has the `storage` schema enabled
+- **Step 1 (Database)** - Check your Personal Access Token is valid and has the required permissions
+- **Step 2 (Storage bucket)** - If auto-creation fails, manually create a bucket named `vault-attachments` (Private) in **Supabase → Storage**
+- **Step 3 (RLS policy)** - Ensure your Supabase project has the `storage` schema enabled
 
 ### "Email not confirmed"
 
@@ -145,7 +145,7 @@ Or disable email confirmation:
 
 ### Files not syncing
 
-1. Check the status bar (bottom-right) — it should show **🟢 Synced**
+1. Check the status bar (bottom-right) - it should show **🟢 Synced**
 2. Open the browser console (**Ctrl+Shift+I** / **Cmd+Option+I**) and look for errors
 3. Verify your **Vault ID** is set in settings
 4. Check that the file path isn't in your **Excluded folders** list
@@ -189,19 +189,19 @@ src/
 
 ## Privacy & Security
 
-- Your vault data is stored in **your own Supabase project** — not on third-party servers
-- All network requests use **Row Level Security (RLS)** — you can only access your own files
-- Passwords are hashed by Supabase Auth — the plugin never stores plaintext passwords
-- No telemetry or analytics — the plugin is fully open source
+- Your vault data is stored in **your own Supabase project** - not on third-party servers
+- All network requests use **Row Level Security (RLS)** - you can only access your own files
+- Passwords are hashed by Supabase Auth - the plugin never stores plaintext passwords
+- No telemetry or analytics - the plugin is fully open source
 
 ## License
 
-0-BSD (Zero-Clause BSD) — see [LICENSE](LICENSE)
+0-BSD (Zero-Clause BSD) - see [LICENSE](LICENSE)
 
 ## Support
 
-- **Issues & Feature Requests** — [GitHub Issues](https://github.com/brianstm/obsidian-supabase-jump/issues)
-- **Discussions** — [GitHub Discussions](https://github.com/brianstm/obsidian-supabase-jump/discussions)
+- **Issues & Feature Requests** - [GitHub Issues](https://github.com/brianstm/obsidian-supabase-jump/issues)
+- **Discussions** - [GitHub Discussions](https://github.com/brianstm/obsidian-supabase-jump/discussions)
 
 ## Acknowledgments
 
