@@ -1,0 +1,46 @@
+{
+	"name": "supabase-jump",
+	"version": "1.0.0",
+	"description": "Obsidian plugin to sync your vault with Supabase",
+	"main": "main.js",
+	"type": "module",
+	"scripts": {
+		"dev": "node esbuild.config.mjs",
+		"build": "tsc -noEmit -skipLibCheck && node esbuild.config.mjs production",
+		"version": "node version-bump.mjs && git add manifest.json versions.json",
+		"lint": "eslint ."
+	},
+	"keywords": [
+		"obsidian",
+		"obsidian-plugin",
+		"supabase",
+		"sync",
+		"realtime",
+		"backup"
+	],
+	"author": "Brians Tjipto",
+	"license": "0-BSD",
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/brianstm/obsidian-supabase-jump.git"
+	},
+	"bugs": {
+		"url": "https://github.com/brianstm/obsidian-supabase-jump/issues"
+	},
+	"devDependencies": {
+		"@types/node": "^16.11.6",
+		"builtin-modules": "^3.3.0",
+		"esbuild": "0.25.5",
+		"eslint-plugin-obsidianmd": "0.1.9",
+		"globals": "14.0.0",
+		"tslib": "2.4.0",
+		"typescript": "^5.8.3",
+		"typescript-eslint": "8.35.1",
+		"@eslint/js": "9.30.1",
+		"jiti": "2.6.1"
+	},
+	"dependencies": {
+		"@supabase/supabase-js": "^2",
+		"obsidian": "latest"
+	}
+}

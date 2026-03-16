@@ -1,0 +1,74 @@
+/* ── SupaBase Jump — settings page styles ───────────────────────────────── */
+
+/* Setup guide collapsible */
+.sbj-setup-guide {
+	margin-bottom: 1.2em;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 6px;
+	padding: 0;
+	overflow: hidden;
+}
+
+.sbj-setup-guide summary {
+	padding: 0.6em 0.9em;
+	font-weight: 600;
+	cursor: pointer;
+	user-select: none;
+	background: var(--background-secondary);
+	list-style: none; /* remove default triangle in some browsers */
+}
+
+.sbj-setup-guide summary::-webkit-details-marker {
+	display: none;
+}
+
+.sbj-setup-guide summary::before {
+	content: "▶ ";
+	font-size: 0.7em;
+	vertical-align: middle;
+	opacity: 0.6;
+}
+
+.sbj-setup-guide[open] summary::before {
+	content: "▼ ";
+}
+
+.sbj-setup-guide ol {
+	margin: 0.8em 1em 0.4em 2.2em;
+	padding: 0;
+}
+
+.sbj-setup-guide li {
+	margin-bottom: 0.3em;
+	font-size: 0.9em;
+	color: var(--text-muted);
+}
+
+/* SQL code block */
+.sbj-sql-block {
+	margin: 0.6em 0.8em 0.8em;
+	padding: 0.75em 1em;
+	background: var(--code-background);
+	border-radius: 4px;
+	font-family: var(--font-monospace);
+	font-size: 0.78em;
+	line-height: 1.6;
+	white-space: pre;
+	overflow-x: auto;
+	color: var(--code-normal);
+	border: 1px solid var(--background-modifier-border);
+}
+
+/* Last-synced status line */
+.sbj-last-sync {
+	margin-top: 1.5em;
+	font-size: 0.85em;
+	color: var(--text-faint);
+	text-align: right;
+}
+
+/* Widen the text inputs in the credentials section slightly */
+.vertical-tab-content .setting-item-control input[type="text"],
+.vertical-tab-content .setting-item-control input[type="password"] {
+	min-width: 260px;
+}
