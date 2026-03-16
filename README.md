@@ -14,9 +14,8 @@ Sync your Obsidian vault with Supabase in real time. Access your notes from any 
 
 ## Demo
 
-<video src="https://github.com/user-attachments/assets/video-demo.mp4" controls></video>
-
-> **Note:** If the video doesn't display above, you can [download it here](assets/video-demo.mp4) or view it in the repository's assets folder.
+![Demo Video](assets/video-demo.gif)
+> **Note:** If the video is blurry, you can [download it here](assets/video-demo.mp4) or view it in the repository's assets folder.
 
 ## Features
 
