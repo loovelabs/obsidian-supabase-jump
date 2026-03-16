@@ -37,6 +37,8 @@ Sync your Obsidian vault with Supabase in real time. Access your notes from any 
 
 ### 2. Install the Plugin
 
+NOTE: I’m currently submitting a PR to the official Obsidian Community Plugins repository, so it’s not available in the community plugin store yet. For now, it can be installed manually from the GitHub releases.
+
 #### Manual Installation
 
 1. Download `main.js`, `manifest.json`, and `styles.css` from the [latest release](https://github.com/brianstm/obsidian-supabase-jump/releases)
