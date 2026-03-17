@@ -16,7 +16,7 @@ export default tseslint.config(
 			},
 		},
 		rules: {
-			'obsidianmd/ui/sentence-case': ['warn', { allowAutoFix: true }],
+			'obsidianmd/ui/sentence-case': ['warn', { allowAutoFix: true, brands: ['Supabase Jump', 'Supabase', 'Jump'] }],
 		},
 	},
 	{

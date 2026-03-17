@@ -1,4 +1,4 @@
-import { Notice, TAbstractFile, TFile, Vault } from "obsidian";
+import { Notice, TFile, Vault } from "obsidian";
 import { SupabaseClient } from "@supabase/supabase-js";
 import { isBinary, isExcluded } from "./settings";
 import { SyncStatus } from "./supabase";
@@ -7,6 +7,7 @@ const STORAGE_BUCKET = "vault-attachments";
 const DB_TABLE = "vault_files";
 const DEBOUNCE_MS = 2000;
 const PULL_IGNORE_TTL = 1500;
+const CONFIG_WATCH_MS = 5000;
 
 function toStoragePath(
 	userId: string,
@@ -50,6 +51,8 @@ export interface SyncHost {
 	/** Settings object - properties are mutated in-place across saves. */
 	readonly settings: {
 		vaultId: string;
+		syncOnStartup: boolean;
+		syncConfigFolder: boolean;
 		syncIntervalMinutes: number;
 		excludedFolders: string[];
 		lastSyncTime: number;
@@ -68,6 +71,8 @@ export class SyncEngine {
 	private changeQueue = new Map<string, "push" | "delete">();
 	private flushTimer: number | null = null;
 	private syncIntervalId: number | null = null;
+	private configWatcherId: number | null = null;
+	private configFileCache = new Map<string, number>(); // path → mtime
 	private ignorePaths = new Set<string>();
 
 	constructor(host: SyncHost) {
@@ -87,19 +92,86 @@ export class SyncEngine {
 		return data.user.id;
 	}
 
-	private isSystemPath(filePath: string): boolean {
-		const configDir = this.host.vault.configDir;
-		return (
-			filePath.startsWith(`${configDir}/`) ||
-			filePath.startsWith(".trash/")
-		);
+	private shouldSkip(filePath: string): boolean {
+		if (
+			!this.host.settings.syncConfigFolder &&
+			(filePath === this.host.vault.configDir ||
+				filePath.startsWith(this.host.vault.configDir + "/"))
+		) {
+			return true;
+		}
+		return isExcluded(filePath, this.host.settings.excludedFolders);
 	}
 
-	private shouldSkip(filePath: string): boolean {
-		return (
-			this.isSystemPath(filePath) ||
-			isExcluded(filePath, this.host.settings.excludedFolders)
-		);
+	private async listAdapterFiles(folderPath: string): Promise<string[]> {
+		const result: string[] = [];
+		try {
+			const listed = await this.host.vault.adapter.list(folderPath);
+			result.push(...listed.files);
+			for (const sub of listed.folders) {
+				result.push(...(await this.listAdapterFiles(sub)));
+			}
+		} catch {
+			// folder doesn't exist or not accessible
+		}
+		return result;
+	}
+
+	private async pushAdapterFile(
+		filePath: string,
+		userId: string,
+		vaultId: string,
+	): Promise<void> {
+		const stat = await this.host.vault.adapter.stat(filePath);
+		if (!stat || stat.type !== "file") return;
+
+		const rowId = toRowId(vaultId, filePath);
+
+		if (isBinary(filePath)) {
+			const data = await this.host.vault.adapter.readBinary(filePath);
+			const storagePath = toStoragePath(userId, vaultId, filePath);
+
+			const { error: uploadErr } = await this.client.storage
+				.from(STORAGE_BUCKET)
+				.upload(storagePath, data, { upsert: true });
+			if (uploadErr)
+				throw new Error(`Storage upload failed - ${uploadErr.message}`);
+
+			const { error: dbErr } = await this.client.from(DB_TABLE).upsert({
+				id: rowId,
+				user_id: userId,
+				vault_id: vaultId,
+				path: filePath,
+				is_binary: true,
+				storage_path: storagePath,
+				content: null,
+				mtime: stat.mtime,
+				ctime: stat.ctime ?? stat.mtime,
+				size: stat.size ?? 0,
+				deleted: false,
+				updated_at: new Date().toISOString(),
+			});
+			if (dbErr)
+				throw new Error(`Metadata upsert failed - ${dbErr.message}`);
+		} else {
+			const content = await this.host.vault.adapter.read(filePath);
+
+			const { error } = await this.client.from(DB_TABLE).upsert({
+				id: rowId,
+				user_id: userId,
+				vault_id: vaultId,
+				path: filePath,
+				is_binary: false,
+				storage_path: null,
+				content,
+				mtime: stat.mtime,
+				ctime: stat.ctime ?? stat.mtime,
+				size: stat.size ?? 0,
+				deleted: false,
+				updated_at: new Date().toISOString(),
+			});
+			if (error) throw new Error(`Upsert failed - ${error.message}`);
+		}
 	}
 
 	private markIgnore(path: string): void {
@@ -271,10 +343,9 @@ export class SyncEngine {
 		} catch {
 			try {
 				await this.host.vault.createBinary(row.path, buffer);
-			} catch (createErr) {
-				throw new Error(
-					`vault write failed for "${row.path}" - ${createErr instanceof Error ? createErr.message : String(createErr)}`,
-				);
+			} catch {
+				// Final fallback for paths outside vault index (e.g., .obsidian/)
+				await this.host.vault.adapter.writeBinary(row.path, buffer);
 			}
 		}
 	}
@@ -293,10 +364,9 @@ export class SyncEngine {
 		} catch {
 			try {
 				await this.host.vault.create(row.path, content);
-			} catch (createErr) {
-				throw new Error(
-					`vault write failed for "${row.path}" - ${createErr instanceof Error ? createErr.message : String(createErr)}`,
-				);
+			} catch {
+				// Final fallback for paths outside vault index (e.g., .obsidian/)
+				await this.host.vault.adapter.write(row.path, content);
 			}
 		}
 	}
@@ -351,7 +421,7 @@ export class SyncEngine {
 		const { vaultId } = this.host.settings;
 
 	if (!vaultId) {
-		new Notice("Supabase Jump: Vault ID is not set - cannot fetch");
+		new Notice("Supabase Jump: vault ID is not set - cannot fetch");
 		return;
 	}
 
@@ -453,6 +523,32 @@ export class SyncEngine {
 				}
 			}
 
+			// Push config files that vault.getFiles() does not enumerate
+			const configPaths = await this.listAdapterFiles(
+				this.host.vault.configDir,
+			);
+			if (configPaths.length > 0) {
+				const userId = await this.getUserId();
+				for (const configPath of configPaths) {
+					if (this.shouldSkip(configPath)) continue;
+					const stat =
+						await this.host.vault.adapter.stat(configPath);
+					if (!stat || stat.type !== "file") continue;
+					const remote = remoteMap.get(configPath);
+					if (!remote || stat.mtime > remote.mtime) {
+						try {
+							await this.pushAdapterFile(
+								configPath,
+								userId,
+								vaultId,
+							);
+						} catch {
+							errors.push(configPath);
+						}
+					}
+				}
+			}
+
 			for (const row of remoteRows) {
 				if (this.shouldSkip(row.path)) continue;
 				const local = localMap.get(row.path);
@@ -478,7 +574,7 @@ export class SyncEngine {
 			console.error("Supabase Jump: FullSync failed", err);
 			this.host.setStatus("error");
 		new Notice(
-			`Supabase Jump: FullSync failed - ${err instanceof Error ? err.message : String(err)}`,
+			`Supabase Jump: Sync failed - ${err instanceof Error ? err.message : String(err)}`,
 		);
 		}
 	}
@@ -514,7 +610,7 @@ export class SyncEngine {
 					console.error("Supabase Jump: Realtime channel error");
 					this.host.setStatus("error");
 				new Notice(
-					"Supabase Jump: Realtime channel error - check Supabase project status",
+					"Supabase Jump: realtime channel error - check Supabase project status",
 				);
 				}
 			});
@@ -555,17 +651,65 @@ export class SyncEngine {
 	}
 
 	private async deleteLocalFile(path: string): Promise<void> {
-		const file: TAbstractFile | null =
-			this.host.vault.getAbstractFileByPath(path);
-		if (!file) return;
+		const file = this.host.vault.getAbstractFileByPath(path);
+		const targetPath = file?.path ?? path;
+		const exists =
+			file !== null || (await this.host.vault.adapter.exists(path));
+		if (!exists) return;
 		this.markIgnore(path);
 		try {
-			await this.host.vault.adapter.trashLocal(file.path);
+			await this.host.vault.adapter.trashLocal(targetPath);
 		} catch (err) {
 			console.warn(
 				`Supabase Jump: deleteLocalFile failed for "${path}"`,
 				err,
 			);
+		}
+	}
+
+	startConfigWatcher(): void {
+		if (this.configWatcherId !== null) return;
+
+		// Warm the cache so we don't push everything on first tick
+		this.warmConfigCache().catch(() => {});
+
+		this.configWatcherId = window.setInterval(() => {
+			this.pollConfigDir().catch((err) =>
+				console.error("Supabase Jump: Config watcher error", err),
+			);
+		}, CONFIG_WATCH_MS);
+	}
+
+	private async warmConfigCache(): Promise<void> {
+		const paths = await this.listAdapterFiles(this.host.vault.configDir);
+		for (const p of paths) {
+			const stat = await this.host.vault.adapter.stat(p);
+			if (stat?.type === "file") this.configFileCache.set(p, stat.mtime);
+		}
+	}
+
+	private async pollConfigDir(): Promise<void> {
+		const paths = await this.listAdapterFiles(this.host.vault.configDir);
+		const seen = new Set<string>();
+
+		for (const p of paths) {
+			seen.add(p);
+			if (this.ignorePaths.has(p) || this.shouldSkip(p)) continue;
+			const stat = await this.host.vault.adapter.stat(p);
+			if (!stat || stat.type !== "file") continue;
+			const cached = this.configFileCache.get(p);
+			if (cached === undefined || stat.mtime > cached) {
+				this.configFileCache.set(p, stat.mtime);
+				this.queueChange(p, "push");
+			}
+		}
+
+		// Detect deletions
+		for (const [p] of this.configFileCache) {
+			if (!seen.has(p)) {
+				this.configFileCache.delete(p);
+				this.queueChange(p, "delete");
+			}
 		}
 	}
 
@@ -607,7 +751,16 @@ export class SyncEngine {
 			try {
 				if (type === "push") {
 					const file = this.host.vault.getAbstractFileByPath(path);
-					if (file instanceof TFile) await this.pushFile(file);
+					if (file instanceof TFile) {
+						await this.pushFile(file);
+					} else {
+						const userId = await this.getUserId();
+						await this.pushAdapterFile(
+							path,
+							userId,
+							this.host.settings.vaultId,
+						);
+					}
 				} else {
 					await this.deleteRemoteFile(path);
 				}
@@ -622,11 +775,16 @@ export class SyncEngine {
 			window.clearInterval(this.syncIntervalId);
 			this.syncIntervalId = null;
 		}
+		if (this.configWatcherId !== null) {
+			window.clearInterval(this.configWatcherId);
+			this.configWatcherId = null;
+		}
 		if (this.flushTimer !== null) {
 			window.clearTimeout(this.flushTimer);
 			this.flushTimer = null;
 		}
 		this.changeQueue.clear();
+		this.configFileCache.clear();
 		this.ignorePaths.clear();
 	}
 }

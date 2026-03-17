@@ -7,6 +7,12 @@ Sync your Obsidian vault with Supabase in real time. Access your notes from any 
 <br />
 
 <div align="center">
+
+**Note:** This is an unofficial way to sync and back up your notes. [Obsidian Sync](https://obsidian.md/sync) is the official supported option.
+
+</div>
+
+<div align="center">
   <a href="https://github.com/brianstm/obsidian-supabase-jump/releases">
     <img src="https://img.shields.io/github/v/release/brianstm/obsidian-supabase-jump?style=for-the-badge&sort=semver&label=LATEST&color=6874e8" alt="Latest release" />
   </a>
@@ -15,7 +21,7 @@ Sync your Obsidian vault with Supabase in real time. Access your notes from any 
 ## Demo
 
 ![Demo Video](assets/video-demo.gif)
-> **Note:** If the video is blurry, you can [download it here](assets/video-demo.mp4) or view it in the repository's assets folder.
+> If the video is blurry, you can [download it here](assets/video-demo.mp4).
 
 ## Features
 
@@ -23,9 +29,13 @@ Sync your Obsidian vault with Supabase in real time. Access your notes from any 
 - **Conflict resolution** - Newer files always win (based on modification time)
 - **Binary file support** - Images, PDFs, and other attachments sync via Supabase Storage
 - **Selective sync** - Exclude specific folders from syncing
+- **Settings sync** - `.obsidian/` folder can be synced to share settings and plugins across devices
+- **Self-hosted support** - Works with any Supabase-compatible instance, not just supabase.com
 - **Mobile compatible** - Works on both desktop and mobile Obsidian
 - **One-click setup** - Automated database and storage configuration
 - **Offline-first** - Local changes are queued and synced when you reconnect
+
+> **Planned:** Frontmatter properties and tags parsing to enable richer querying from your Supabase backend.
 
 ## Quick Start
 
@@ -37,13 +47,22 @@ Sync your Obsidian vault with Supabase in real time. Access your notes from any 
 
 ### 2. Install the Plugin
 
-NOTE: I’m currently submitting a PR to the official Obsidian Community Plugins repository, so it’s not available in the community plugin store yet. For now, it can be installed manually from the GitHub releases.
+The plugin is pending review in the community plugin store. Install it via **BRAT** (recommended) or manually in the meantime.
+
+#### Install via BRAT (Recommended)
+
+[BRAT](https://github.com/TfTHacker/obsidian42-brat) lets you install and auto-update beta plugins directly from GitHub.
+
+1. Install the **BRAT** plugin from the Obsidian Community Plugins store
+2. Open **Settings → BRAT → Add Beta Plugin**
+3. Paste the repo URL: `https://github.com/brianstm/obsidian-supabase-jump`
+4. Click **Add Plugin** — BRAT will install it and keep it up to date automatically
 
 #### Manual Installation
 
-1. Download `main.js`, `manifest.json`, and `styles.css` from the [latest release](https://github.com/brianstm/obsidian-supabase-jump/releases)
+1. Download `main.js` and `manifest.json` from the [latest release](https://github.com/brianstm/obsidian-supabase-jump/releases)
 2. Create a folder: `<vault>/.obsidian/plugins/supabase-jump/`
-3. Copy the three files into that folder
+3. Copy the files into that folder
 4. Reload Obsidian and enable the plugin in **Settings → Community plugins**
 
 ### 3. Configure the Plugin
@@ -85,12 +104,15 @@ Or use the command palette:
 
 ### Exclude Folders
 
-To exclude folders from syncing (e.g., `.obsidian`, `.trash`, `Templates`):
-1. Go to **Settings → SupaBase Jump**
-2. Add folder paths to **Excluded folders** (comma-separated)
-3. Example: `.obsidian,.trash,Templates`
+To exclude folders from syncing, add them to **Excluded folders** (comma-separated) in settings.
 
-System folders (`.obsidian/`, `.trash/`) are always excluded automatically.
+Example: `Templates,archive/old`
+
+By default no folders are excluded — including `.obsidian/` and `.trash/`. If you want to keep vault settings from syncing, add `.obsidian` to your excluded list.
+
+### Self-Hosted Supabase
+
+The plugin works with any Supabase-compatible URL. Enter your self-hosted instance URL in the **Project URL** field. Note that the one-click setup uses the Supabase cloud management API, so for self-hosted instances you will need to run the SQL manually using the guide in the settings panel.
 
 ## How It Works
 
@@ -144,13 +166,13 @@ Or disable email confirmation:
 1. Check the status bar (bottom-right) - it should show **🟢 Synced**
 2. Open the browser console (**Ctrl+Shift+I** / **Cmd+Option+I**) and look for errors
 3. Verify your **Vault ID** is set in settings
-4. Check that the file path isn't in your **Excluded folders** list
+4. Check that the file path is not in your **Excluded folders** list
 5. Try **Sync now** manually from settings
 
 ### "Invalid key" errors
 
 The plugin automatically handles special characters in filenames by base64url-encoding storage keys. If you still see this error:
-1. Ensure you're running the latest version of the plugin
+1. Ensure you are running the latest version of the plugin
 2. Check the browser console for the full error message
 3. Report the issue on [GitHub](https://github.com/brianstm/obsidian-supabase-jump/issues) with the filename
 
@@ -159,17 +181,10 @@ The plugin automatically handles special characters in filenames by base64url-en
 ### Building from Source
 
 ```bash
-# Clone the repository
 git clone https://github.com/brianstm/obsidian-supabase-jump.git
 cd obsidian-supabase-jump
-
-# Install dependencies
 npm install
-
-# Development build (watch mode)
 npm run dev
-
-# Production build
 npm run build
 ```
 
@@ -200,14 +215,7 @@ MIT - see [LICENSE](LICENSE)
 
 ## Acknowledgments
 
-<div align="center">
-
-**Note:** This is an unofficial way to sync and back up your notes. [Obsidian Sync](https://obsidian.md/sync) is the official supported option.
-
-</div>
-
 Built with:
 - [Obsidian Plugin API](https://docs.obsidian.md)
 - [Supabase](https://supabase.com)
 - [Supabase JS Client](https://github.com/supabase/supabase-js)
-

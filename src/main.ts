@@ -65,7 +65,7 @@ function extractErrorMessage(body: string, status: number): string {
 		if (typeof parsed.message === "string") return parsed.message;
 		if (typeof parsed.error === "string") return parsed.error;
 	} catch {
-		// Invalid JSON
+		// ignore
 	}
 	return body.trim() || `HTTP ${status}`;
 }
@@ -138,6 +138,7 @@ export default class SupaBaseJumpPlugin extends Plugin {
 		if (!this.supabase) return; // connection failed - manager already reported error
 
 		this.syncEngine.startRealtimeListener();
+		this.syncEngine.startConfigWatcher();
 
 		if (this.settings.syncIntervalMinutes > 0) {
 			this.syncEngine.startAutoSync();
@@ -358,7 +359,7 @@ export default class SupaBaseJumpPlugin extends Plugin {
 		}
 
 	new Notice(
-		"Supabase Jump: All set - table, bucket, and realtime enabled ✓",
+		"Supabase Jump: all set - table, bucket, and realtime enabled ✓",
 	);
 	}
 }

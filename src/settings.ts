@@ -15,6 +15,7 @@ export interface SupaBaseJumpSettings {
 	password: string;
 	vaultId: string;
 	syncOnStartup: boolean;
+	syncConfigFolder: boolean;
 	syncIntervalMinutes: number;
 	excludedFolders: string[];
 	lastSyncTime: number;
@@ -28,6 +29,7 @@ export const DEFAULT_SETTINGS: SupaBaseJumpSettings = {
 	password: "",
 	vaultId: "",
 	syncOnStartup: false,
+	syncConfigFolder: true,
 	syncIntervalMinutes: 5,
 	excludedFolders: [],
 	lastSyncTime: 0,
@@ -146,7 +148,7 @@ export class SupaBaseJumpSettingTab extends PluginSettingTab {
 		new Setting(containerEl)
 			.setName("One-click project setup")
 			.setDesc(
-				"Creates the vault_files table, enables realtime, and creates the vault-attachments storage bucket; run once after creating your supabase project",
+				"Creates the vault_files table, enables realtime, and creates the vault-attachments storage bucket; run once after creating your Supabase project",
 			)
 			.addButton((btn) => {
 				btn.setButtonText("Run full setup").setCta();
@@ -263,7 +265,7 @@ export class SupaBaseJumpSettingTab extends PluginSettingTab {
 		new Setting(containerEl)
 			.setName("Vault ID")
 			.setDesc(
-				"Unique identifier for this vault; files are namespaced under this ID in supabase storage; each vault syncing to the same supabase project needs a different ID",
+				"Unique identifier for this vault; files are namespaced under this ID in Supabase storage; each vault syncing to the same Supabase project needs a different ID",
 			)
 			.addText((text) => {
 				vaultIdText = text;
@@ -286,7 +288,7 @@ export class SupaBaseJumpSettingTab extends PluginSettingTab {
 						vaultIdText.setValue(id);
 						this.plugin.settings.vaultId = id;
 						await this.plugin.saveSettings();
-						new Notice("Supabase Jump: Vault ID generated");
+						new Notice("Supabase Jump: vault ID generated");
 					}),
 			);
 
@@ -318,6 +320,20 @@ export class SupaBaseJumpSettingTab extends PluginSettingTab {
 					.setValue(this.plugin.settings.syncOnStartup)
 					.onChange(async (value) => {
 						this.plugin.settings.syncOnStartup = value;
+						await this.plugin.saveSettings();
+					}),
+			);
+
+		new Setting(containerEl)
+			.setName("Sync config folder")
+			.setDesc(
+				"Watch and sync the obsidian config folder (themes, snippets, plugin settings, etc.); disable if you only want to sync vault notes",
+			)
+			.addToggle((toggle) =>
+				toggle
+					.setValue(this.plugin.settings.syncConfigFolder)
+					.onChange(async (value) => {
+						this.plugin.settings.syncConfigFolder = value;
 						await this.plugin.saveSettings();
 					}),
 			);
