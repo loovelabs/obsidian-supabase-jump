@@ -48,14 +48,14 @@ export class SupabaseManager {
 		} catch {
 	this.setStatus("error");
 	new Notice(
-		"SupaBase jump: project URL is not a valid URL - check your settings",
+		"Supabase Jump: Project URL is not a valid URL - check your settings",
 	);
 			return;
 		}
 
 		if (!parsedUrl.hostname.endsWith(".supabase.co")) {
 			console.warn(
-				"SupaBase Jump: Project URL does not look like a Supabase URL:",
+				"Supabase Jump: Project URL does not look like a Supabase URL:",
 				supabaseUrl,
 			);
 		}
@@ -70,11 +70,11 @@ export class SupabaseManager {
 			});
 			await this.signIn();
 		} catch (err) {
-			console.error("SupaBase Jump: init error", err);
+			console.error("Supabase Jump: Initialization error", err);
 			this.client = null;
 			this.setStatus("error");
 			const msg = err instanceof Error ? err.message : String(err);
-			new Notice(`SupaBase Jump: Connection failed - ${msg}`, 8000);
+			new Notice(`Supabase Jump: Initialization failed - ${msg}`, 8000);
 		}
 	}
 
@@ -93,7 +93,7 @@ export class SupabaseManager {
 		const { email, password } = this.host.settings;
 		if (!email || !password) {
 			this.setStatus("offline");
-			new Notice("SupaBase jump: email and password are required");
+			new Notice("Supabase Jump: Email and password are required");
 			return;
 		}
 
@@ -114,14 +114,14 @@ export class SupabaseManager {
 
 		if (!error) {
 			this.setStatus("synced");
-			new Notice("SupaBase jump: connected");
+			new Notice("Supabase Jump: connected");
 			return;
 		}
 
 		if (error.code === "email_not_confirmed") {
 			this.setStatus("offline");
 			new Notice(
-				"SupaBase Jump: email not confirmed\n\n" +
+				"Supabase Jump: Email not confirmed\n\n" +
 					"Check your inbox and click the confirmation link, then press connect again.\n\n" +
 					'Or disable email confirmation: Supabase \u2192 authentication \u2192 providers \u2192 email \u2192 uncheck "Confirm email"',
 				12000,
@@ -140,17 +140,17 @@ export class SupabaseManager {
 				});
 			} catch (err) {
 				const msg = err instanceof Error ? err.message : String(err);
-				throw new Error(`network error during sign-up - ${msg}`);
+				throw new Error(`Network error during sign-up - ${msg}`);
 			}
 
 			if (signUpResult.error) {
 				console.error(
-					"SupaBase Jump: sign-up failed",
+					"Supabase Jump: Sign-up failed",
 					signUpResult.error,
 				);
 				this.setStatus("error");
 			new Notice(
-				`SupaBase Jump: Sign-up failed - ${signUpResult.error.message}`,
+				`Supabase Jump: Sign-up failed - ${signUpResult.error.message}`,
 			);
 				return;
 			}
@@ -159,28 +159,28 @@ export class SupabaseManager {
 			if (!confirmed) {
 				this.setStatus("offline");
 				new Notice(
-					"SupaBase Jump: account created - confirmation email sent\n\n" +
-						"click the link in the email, then press connect\n\n" +
-						'tip: disable email confirmation in supabase \u2192 authentication \u2192 providers \u2192 email \u2192 uncheck "Confirm email" to skip this step',
+					"Supabase Jump: Account created - Confirmation email sent\n\n" +
+						"Click the link in the email, then press connect\n\n" +
+						'Tip: Disable email confirmation in Supabase \u2192 Authentication \u2192 Providers \u2192 Email \u2192 Uncheck "Confirm email" to skip this step',
 					12000,
 				);
 			} else {
 				this.setStatus("synced");
-				new Notice("SupaBase jump: account created and connected");
+				new Notice("Supabase Jump: Account created and connected");
 			}
 			return;
 		}
 
-	console.error("SupaBase Jump: sign-in failed", error);
+	console.error("Supabase Jump: Sign-in failed", error);
 	this.setStatus("error");
-	new Notice(`SupaBase Jump: Sign-in failed - ${error.message}`);
+	new Notice(`Supabase Jump: Sign-in failed - ${error.message}`);
 	}
 
 	async signOut(): Promise<void> {
 		if (!this.client) return;
 		await this.client.auth.signOut();
 		this.setStatus("offline");
-		new Notice("SupaBase jump: signed out");
+		new Notice("Supabase Jump: Signed out");
 	}
 
 	registerChannel(channel: ReturnType<SupabaseClient["channel"]>) {

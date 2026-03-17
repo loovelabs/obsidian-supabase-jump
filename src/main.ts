@@ -147,7 +147,7 @@ export default class SupaBaseJumpPlugin extends Plugin {
 			this.syncEngine
 				.fullSync()
 				.catch((err) =>
-					console.error("SupaBase Jump: startup sync error", err),
+					console.error("Supabase Jump: Startup sync error", err),
 				);
 		}
 	}
@@ -172,7 +172,7 @@ export default class SupaBaseJumpPlugin extends Plugin {
 			name: "Show sync status",
 			callback: () => {
 				const label = this.statusBarItem.getText();
-				new Notice(`SupaBase Jump: ${label || "status unavailable"}`);
+				new Notice(`Supabase Jump: ${label || "status unavailable"}`);
 			},
 		});
 
@@ -183,7 +183,7 @@ export default class SupaBaseJumpPlugin extends Plugin {
 				this.syncEngine
 					.fullSync()
 					.catch((err) =>
-						console.error("SupaBase Jump: force sync error", err),
+						console.error("Supabase Jump: Force sync error", err),
 					);
 			},
 		});
@@ -195,7 +195,7 @@ export default class SupaBaseJumpPlugin extends Plugin {
 				this.syncEngine
 					.fetchOnly()
 					.catch((err) =>
-						console.error("SupaBase Jump: fetch error", err),
+						console.error("Supabase Jump: Fetch error", err),
 					);
 			},
 		});
@@ -298,7 +298,7 @@ export default class SupaBaseJumpPlugin extends Plugin {
 			await runSQL(SCHEMA_SQL);
 		} catch (err) {
 			const msg = err instanceof Error ? err.message : String(err);
-			console.error("SupaBase Jump: setup step 1 failed", err);
+			console.error("Supabase Jump: Setup step 1 failed", err);
 			new Notice(`Setup failed at step 1: ${msg}`, 10000);
 			throw err;
 		}
@@ -324,20 +324,20 @@ export default class SupaBaseJumpPlugin extends Plugin {
 				if (!bucketOk) {
 					const msg = extractErrorMessage(res.text, res.status);
 					console.warn(
-						"SupaBase Jump: bucket creation via API failed -",
+						"Supabase Jump: bucket creation via API failed -",
 						msg,
 					);
 				}
 			} catch (err) {
 				console.warn(
-					"SupaBase Jump: bucket creation request failed -",
+					"Supabase Jump: Bucket creation request failed -",
 					err,
 				);
 			}
 
 			if (!bucketOk) {
 				new Notice(
-					"SupaBase Jump: Could not auto-create storage bucket.\n\n" +
+					"Supabase Jump: Could not auto-create Storage bucket.\n\n" +
 						"Create it manually: Supabase \u2192 Storage \u2192 New bucket\n" +
 						"  Name: vault-attachments\n" +
 						"  Public: OFF\n\n" +
@@ -352,13 +352,13 @@ export default class SupaBaseJumpPlugin extends Plugin {
 			await runSQL(STORAGE_RLS_SQL);
 		} catch (err) {
 			const msg = err instanceof Error ? err.message : String(err);
-			console.error("SupaBase Jump: setup step 3 failed", err);
+			console.error("Supabase Jump: Setup Step 3 failed", err);
 			new Notice(`Setup failed at step 3: ${msg}`, 10000);
 			throw err;
 		}
 
 	new Notice(
-		"SupaBase jump: all set - table, bucket, and realtime enabled ✓",
+		"Supabase Jump: All set - table, bucket, and realtime enabled ✓",
 	);
 	}
 }
