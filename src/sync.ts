@@ -1,13 +1,15 @@
 import { Notice, TFile, Vault } from "obsidian";
 import { SupabaseClient } from "@supabase/supabase-js";
 import { isBinary, isExcluded } from "./settings";
+import { parseFrontmatter } from "./frontmatter";
 import { SyncStatus } from "./supabase";
 
 const STORAGE_BUCKET = "vault-attachments";
 const DB_TABLE = "vault_files";
-const DEBOUNCE_MS = 2000;
+const DEBOUNCE_MS = 1000;
 const PULL_IGNORE_TTL = 1500;
 const CONFIG_WATCH_MS = 5000;
+const REALTIME_RECONNECT_MS = 5000;
 
 function toStoragePath(
 	userId: string,
@@ -39,6 +41,8 @@ export interface VaultFileRow {
 	content: string | null;
 	is_binary: boolean;
 	storage_path: string | null;
+	frontmatter: Record<string, unknown> | null;
+	tags: string[] | null;
 	mtime: number;
 	ctime: number;
 	size: number;
@@ -72,8 +76,9 @@ export class SyncEngine {
 	private flushTimer: number | null = null;
 	private syncIntervalId: number | null = null;
 	private configWatcherId: number | null = null;
-	private configFileCache = new Map<string, number>(); // path → mtime
+	private configFileCache = new Map<string, number>();
 	private ignorePaths = new Set<string>();
+	private realtimeReconnectTimer: number | null = null;
 
 	constructor(host: SyncHost) {
 		this.host = host;
@@ -81,14 +86,14 @@ export class SyncEngine {
 
 	private get client(): SupabaseClient {
 		const { supabase } = this.host;
-		if (!supabase) throw new Error("Supabase Jump: Not Connected.");
+		if (!supabase) throw new Error("Supabase jump: Not Connected.");
 		return supabase;
 	}
 
 	private async getUserId(): Promise<string> {
 		const { data, error } = await this.client.auth.getUser();
 		if (error || !data.user)
-			throw new Error("Supabase Jump: Not Authenticated.");
+			throw new Error("Supabase jump: Not Authenticated.");
 		return data.user.id;
 	}
 
@@ -156,6 +161,11 @@ export class SyncEngine {
 		} else {
 			const content = await this.host.vault.adapter.read(filePath);
 
+			const isMarkdown = filePath.endsWith(".md");
+			const { properties, tags } = isMarkdown
+				? parseFrontmatter(content)
+				: { properties: {}, tags: [] };
+
 			const { error } = await this.client.from(DB_TABLE).upsert({
 				id: rowId,
 				user_id: userId,
@@ -164,6 +174,9 @@ export class SyncEngine {
 				is_binary: false,
 				storage_path: null,
 				content,
+				frontmatter:
+					Object.keys(properties).length > 0 ? properties : null,
+				tags: tags.length > 0 ? tags : null,
 				mtime: stat.mtime,
 				ctime: stat.ctime ?? stat.mtime,
 				size: stat.size ?? 0,
@@ -181,7 +194,7 @@ export class SyncEngine {
 
 	async ensureFolder(filePath: string): Promise<void> {
 		const segments = filePath.split("/");
-		segments.pop(); // strip filename
+		segments.pop();
 
 		let current = "";
 		for (const segment of segments) {
@@ -210,11 +223,11 @@ export class SyncEngine {
 		} catch (err) {
 			const msg = err instanceof Error ? err.message : String(err);
 			console.error(
-				`Supabase Jump: pushFile failed for "${file.path}"`,
+				`Supabase jump: pushFile failed for "${file.path}"`,
 				err,
 			);
 		new Notice(
-			`Supabase Jump: Push failed for "${file.path}" - ${msg}`,
+			`Supabase jump: Push failed for "${file.path}" - ${msg}`,
 		);
 			throw err; // re-throw so fullSync can count errors
 		}
@@ -277,6 +290,11 @@ export class SyncEngine {
 			);
 		}
 
+		const isMarkdown = file.path.endsWith(".md");
+		const { properties, tags } = isMarkdown
+			? parseFrontmatter(content)
+			: { properties: {}, tags: [] };
+
 		const { error } = await this.client.from(DB_TABLE).upsert({
 			id: rowId,
 			user_id: userId,
@@ -285,6 +303,8 @@ export class SyncEngine {
 			is_binary: false,
 			storage_path: null,
 			content,
+			frontmatter: Object.keys(properties).length > 0 ? properties : null,
+			tags: tags.length > 0 ? tags : null,
 			mtime: file.stat.mtime,
 			ctime: file.stat.ctime ?? file.stat.mtime,
 			size: file.stat.size ?? 0,
@@ -307,10 +327,10 @@ export class SyncEngine {
 		} catch (err) {
 			const msg = err instanceof Error ? err.message : String(err);
 			console.error(
-				`Supabase Jump: pullFile failed for "${row.path}"`,
+				`Supabase jump: pullFile failed for "${row.path}"`,
 				err,
 			);
-			new Notice(`Supabase Jump: Pull failed for "${row.path}" - ${msg}`);
+			new Notice(`Supabase jump: Pull failed for "${row.path}" - ${msg}`);
 			throw err; // re-throw so fullSync can count errors
 		}
 	}
@@ -402,17 +422,17 @@ export class SyncEngine {
 
 				if (storageErr) {
 					console.warn(
-						`Supabase Jump: Storage removal failed - ${storageErr.message}`,
+						`Supabase jump: Storage removal failed - ${storageErr.message}`,
 					);
 				}
 			}
 		} catch (err) {
 			const msg = err instanceof Error ? err.message : String(err);
 			console.error(
-				`Supabase Jump: deleteRemoteFile failed for "${path}"`,
+				`Supabase jump: deleteRemoteFile failed for "${path}"`,
 				err,
 			);
-			new Notice(`Supabase Jump: Delete failed for "${path}" - ${msg}`);
+			new Notice(`Supabase jump: Delete failed for "${path}" - ${msg}`);
 			throw err;
 		}
 	}
@@ -467,12 +487,12 @@ export class SyncEngine {
 			const s = errors.length;
 			const suffix =
 				s > 0 ? ` (${s} error${s > 1 ? "s" : ""} - see console)` : "";
-			new Notice(`Supabase Jump: Fetch complete${suffix}`);
+			new Notice(`Supabase jump: Fetch complete${suffix}`);
 		} catch (err) {
-			console.error("Supabase Jump: fetchOnly failed", err);
+			console.error("Supabase jump: fetchOnly failed", err);
 			this.host.setStatus("error");
 		new Notice(
-			`Supabase Jump: Fetch failed - ${err instanceof Error ? err.message : String(err)}`,
+			`Supabase jump: Fetch failed - ${err instanceof Error ? err.message : String(err)}`,
 		);
 		}
 	}
@@ -569,12 +589,12 @@ export class SyncEngine {
 			const s = errors.length;
 			const suffix =
 				s > 0 ? ` (${s} error${s > 1 ? "s" : ""} - see console)` : "";
-			new Notice(`Supabase Jump: Sync complete${suffix}`);
+			new Notice(`Supabase jump: Sync complete${suffix}`);
 		} catch (err) {
-			console.error("Supabase Jump: FullSync failed", err);
+			console.error("Supabase jump: FullSync failed", err);
 			this.host.setStatus("error");
 		new Notice(
-			`Supabase Jump: Sync failed - ${err instanceof Error ? err.message : String(err)}`,
+			`Supabase jump: Sync failed - ${err instanceof Error ? err.message : String(err)}`,
 		);
 		}
 	}
@@ -583,7 +603,7 @@ export class SyncEngine {
 		const { vaultId } = this.host.settings;
 		if (!vaultId) return;
 
-		const channel = this.client
+		this.client
 			.channel(`vault-${vaultId}`)
 			.on<VaultFileRow>(
 				"postgres_changes",
@@ -596,28 +616,36 @@ export class SyncEngine {
 				(payload) => {
 					this.handleRealtimeEvent(payload).catch((err) => {
 						console.error(
-							"Supabase Jump: Realtime handler error",
+							"Supabase jump: Realtime handler error",
 							err,
 						);
-				new Notice(
-					`Supabase Jump: Realtime handler error - ${err instanceof Error ? err.message : String(err)}`,
-				);
+						new Notice(
+							`Supabase jump: Realtime handler error - ${err instanceof Error ? err.message : String(err)}`,
+						);
 					});
 				},
 			)
 			.subscribe((status: string) => {
-				if (status === "CHANNEL_ERROR") {
-					console.error("Supabase Jump: Realtime channel error");
+				if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") {
+					console.error(
+						`Supabase jump: Realtime channel ${status.toLowerCase()} — reconnecting in ${REALTIME_RECONNECT_MS / 1000}s`,
+					);
 					this.host.setStatus("error");
-				new Notice(
-					"Supabase Jump: realtime channel error - check Supabase project status",
-				);
+					new Notice(
+						`Supabase Jump: Realtime disconnected - reconnecting in ${REALTIME_RECONNECT_MS / 1000}s…`,
+					);
+					if (this.realtimeReconnectTimer !== null) return;
+					this.realtimeReconnectTimer = window.setTimeout(() => {
+						this.realtimeReconnectTimer = null;
+						if (!this.client) return;
+						void this.client.removeAllChannels().then(() => {
+							this.startRealtimeListener();
+						});
+					}, REALTIME_RECONNECT_MS);
+				} else if (status === "SUBSCRIBED") {
+					this.host.setStatus("synced");
 				}
 			});
-
-		// The channel is owned by the Supabase client; removeAllChannels() in
-		// cleanup() will unsubscribe it automatically on unload.
-		void channel;
 	}
 
 	private async handleRealtimeEvent(payload: {
@@ -661,7 +689,7 @@ export class SyncEngine {
 			await this.host.vault.adapter.trashLocal(targetPath);
 		} catch (err) {
 			console.warn(
-				`Supabase Jump: deleteLocalFile failed for "${path}"`,
+				`Supabase jump: deleteLocalFile failed for "${path}"`,
 				err,
 			);
 		}
@@ -675,7 +703,7 @@ export class SyncEngine {
 
 		this.configWatcherId = window.setInterval(() => {
 			this.pollConfigDir().catch((err) =>
-				console.error("Supabase Jump: Config watcher error", err),
+				console.error("Supabase jump: Config watcher error", err),
 			);
 		}, CONFIG_WATCH_MS);
 	}
@@ -704,7 +732,6 @@ export class SyncEngine {
 			}
 		}
 
-		// Detect deletions
 		for (const [p] of this.configFileCache) {
 			if (!seen.has(p)) {
 				this.configFileCache.delete(p);
@@ -720,7 +747,7 @@ export class SyncEngine {
 		this.syncIntervalId = window.setInterval(
 			() => {
 				void this.fullSync().catch((err) =>
-					console.error("Supabase Jump: Auto-sync error", err),
+					console.error("Supabase jump: Auto-sync error", err),
 				);
 			},
 			syncIntervalMinutes * 60 * 1000,
@@ -735,7 +762,7 @@ export class SyncEngine {
 		if (this.flushTimer !== null) window.clearTimeout(this.flushTimer);
 		this.flushTimer = window.setTimeout(() => {
 			this.flushQueue().catch((err) =>
-				console.error("Supabase Jump: Queue flush error", err),
+				console.error("Supabase jump: Queue flush error", err),
 			);
 		}, DEBOUNCE_MS);
 	}
@@ -782,6 +809,10 @@ export class SyncEngine {
 		if (this.flushTimer !== null) {
 			window.clearTimeout(this.flushTimer);
 			this.flushTimer = null;
+		}
+		if (this.realtimeReconnectTimer !== null) {
+			window.clearTimeout(this.realtimeReconnectTimer);
+			this.realtimeReconnectTimer = null;
 		}
 		this.changeQueue.clear();
 		this.configFileCache.clear();

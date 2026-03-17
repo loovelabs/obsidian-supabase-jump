@@ -136,7 +136,8 @@ export class SupaBaseJumpSettingTab extends PluginSettingTab {
 				"Generate at supabase.com/dashboard/account/tokens - Only needed for this setup step, can be cleared after",
 			)
 			.addText((text) => {
-				text.setPlaceholder("Sbp_...")
+				// eslint-disable-next-line obsidianmd/ui/sentence-case
+				text.setPlaceholder("sbp_...")
 					.setValue(this.plugin.settings.personalAccessToken)
 					.onChange(async (value) => {
 						this.plugin.settings.personalAccessToken = value.trim();

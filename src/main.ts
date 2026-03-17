@@ -15,6 +15,8 @@ CREATE TABLE IF NOT EXISTS vault_files (
   content      text,
   storage_path text,
   is_binary    boolean default false,
+  frontmatter  jsonb,
+  tags         text[],
   mtime        bigint not null,
   ctime        bigint not null,
   size         bigint not null,
@@ -22,8 +24,11 @@ CREATE TABLE IF NOT EXISTS vault_files (
   updated_at   timestamptz default now(),
   user_id      uuid references auth.users(id)
 );
+ALTER TABLE vault_files ADD COLUMN IF NOT EXISTS frontmatter jsonb;
+ALTER TABLE vault_files ADD COLUMN IF NOT EXISTS tags text[];
 CREATE INDEX IF NOT EXISTS vault_files_vault_path ON vault_files(vault_id, path);
 CREATE INDEX IF NOT EXISTS vault_files_vault_mtime ON vault_files(vault_id, mtime);
+CREATE INDEX IF NOT EXISTS vault_files_tags ON vault_files USING gin(tags);
 ALTER TABLE vault_files ENABLE ROW LEVEL SECURITY;
 DO $$ BEGIN
   IF NOT EXISTS (
@@ -65,7 +70,7 @@ function extractErrorMessage(body: string, status: number): string {
 		if (typeof parsed.message === "string") return parsed.message;
 		if (typeof parsed.error === "string") return parsed.error;
 	} catch {
-		// ignore
+		// Ignore
 	}
 	return body.trim() || `HTTP ${status}`;
 }
@@ -148,7 +153,7 @@ export default class SupaBaseJumpPlugin extends Plugin {
 			this.syncEngine
 				.fullSync()
 				.catch((err) =>
-					console.error("Supabase Jump: Startup sync error", err),
+					console.error("Supabase jump: Startup sync error", err),
 				);
 		}
 	}
@@ -173,7 +178,7 @@ export default class SupaBaseJumpPlugin extends Plugin {
 			name: "Show sync status",
 			callback: () => {
 				const label = this.statusBarItem.getText();
-				new Notice(`Supabase Jump: ${label || "status unavailable"}`);
+				new Notice(`Supabase jump: ${label || "status unavailable"}`);
 			},
 		});
 
@@ -184,7 +189,7 @@ export default class SupaBaseJumpPlugin extends Plugin {
 				this.syncEngine
 					.fullSync()
 					.catch((err) =>
-						console.error("Supabase Jump: Force sync error", err),
+						console.error("Supabase jump: Force sync error", err),
 					);
 			},
 		});
@@ -196,7 +201,7 @@ export default class SupaBaseJumpPlugin extends Plugin {
 				this.syncEngine
 					.fetchOnly()
 					.catch((err) =>
-						console.error("Supabase Jump: Fetch error", err),
+						console.error("Supabase jump: Fetch error", err),
 					);
 			},
 		});
@@ -299,7 +304,7 @@ export default class SupaBaseJumpPlugin extends Plugin {
 			await runSQL(SCHEMA_SQL);
 		} catch (err) {
 			const msg = err instanceof Error ? err.message : String(err);
-			console.error("Supabase Jump: Setup step 1 failed", err);
+			console.error("Supabase jump: Setup step 1 failed", err);
 			new Notice(`Setup failed at step 1: ${msg}`, 10000);
 			throw err;
 		}
@@ -325,20 +330,20 @@ export default class SupaBaseJumpPlugin extends Plugin {
 				if (!bucketOk) {
 					const msg = extractErrorMessage(res.text, res.status);
 					console.warn(
-						"Supabase Jump: bucket creation via API failed -",
+						"Supabase jump: bucket creation via API failed -",
 						msg,
 					);
 				}
 			} catch (err) {
 				console.warn(
-					"Supabase Jump: Bucket creation request failed -",
+					"Supabase jump: Bucket creation request failed -",
 					err,
 				);
 			}
 
 			if (!bucketOk) {
 				new Notice(
-					"Supabase Jump: Could not auto-create Storage bucket.\n\n" +
+					"Supabase jump: Could not auto-create Storage bucket.\n\n" +
 						"Create it manually: Supabase \u2192 Storage \u2192 New bucket\n" +
 						"  Name: vault-attachments\n" +
 						"  Public: OFF\n\n" +
@@ -353,13 +358,13 @@ export default class SupaBaseJumpPlugin extends Plugin {
 			await runSQL(STORAGE_RLS_SQL);
 		} catch (err) {
 			const msg = err instanceof Error ? err.message : String(err);
-			console.error("Supabase Jump: Setup Step 3 failed", err);
+			console.error("Supabase jump: Setup Step 3 failed", err);
 			new Notice(`Setup failed at step 3: ${msg}`, 10000);
 			throw err;
 		}
 
-	new Notice(
-		"Supabase Jump: all set - table, bucket, and realtime enabled ✓",
-	);
+		new Notice(
+			"Supabase Jump: all set - table, bucket, and realtime enabled ✓",
+		);
 	}
 }

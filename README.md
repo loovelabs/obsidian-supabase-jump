@@ -21,6 +21,7 @@ Sync your Obsidian vault with Supabase in real time. Access your notes from any 
 ## Demo
 
 ![Demo Video](assets/video-demo.gif)
+
 > If the video is blurry, you can [download it here](assets/video-demo.mp4).
 
 ## Features
@@ -28,14 +29,13 @@ Sync your Obsidian vault with Supabase in real time. Access your notes from any 
 - **Real-time sync** - Changes propagate instantly across all your devices via Supabase Realtime
 - **Conflict resolution** - Newer files always win (based on modification time)
 - **Binary file support** - Images, PDFs, and other attachments sync via Supabase Storage
+- **Frontmatter parsing** - Properties and tags from markdown frontmatter are stored in dedicated columns for SQL querying
 - **Selective sync** - Exclude specific folders from syncing
-- **Settings sync** - `.obsidian/` folder can be synced to share settings and plugins across devices
+- **Settings sync** - `.obsidian/` folder syncs automatically to share themes, snippets, and plugin settings across devices
 - **Self-hosted support** - Works with any Supabase-compatible instance, not just supabase.com
 - **Mobile compatible** - Works on both desktop and mobile Obsidian
 - **One-click setup** - Automated database and storage configuration
 - **Offline-first** - Local changes are queued and synced when you reconnect
-
-> **Planned:** Frontmatter properties and tags parsing to enable richer querying from your Supabase backend.
 
 ## Quick Start
 
@@ -56,7 +56,7 @@ The plugin is pending review in the community plugin store. Install it via **BRA
 1. Install the **BRAT** plugin from the Obsidian Community Plugins store
 2. Open **Settings → BRAT → Add Beta Plugin**
 3. Paste the repo URL: `https://github.com/brianstm/obsidian-supabase-jump`
-4. Click **Add Plugin** — BRAT will install it and keep it up to date automatically
+4. Click **Add Plugin** - BRAT will install it and keep it up to date automatically
 
 #### Manual Installation
 
@@ -69,14 +69,14 @@ The plugin is pending review in the community plugin store. Install it via **BRA
 
 1. Open **Settings → SupaBase Jump**
 2. In the **Initial Setup** section:
-   - Generate a **Personal Access Token** at [supabase.com/dashboard/account/tokens](https://supabase.com/dashboard/account/tokens)
-   - Paste it into the **Personal access token** field
-   - Click **Run full setup** - this creates the database table, storage bucket, and enables Realtime
+    - Generate a **Personal Access Token** at [supabase.com/dashboard/account/tokens](https://supabase.com/dashboard/account/tokens)
+    - Paste it into the **Personal access token** field
+    - Click **Run full setup** - this creates the database table, storage bucket, and enables Realtime
 3. Fill in your credentials:
-   - **Supabase URL** - Your project URL (e.g., `https://xxxxx.supabase.co`)
-   - **Supabase anon key** - Your anon/public key
-   - **Email** - Your Supabase account email
-   - **Password** - Your Supabase account password
+    - **Supabase URL** - Your project URL (e.g., `https://xxxxx.supabase.co`)
+    - **Supabase anon key** - Your anon/public key
+    - **Email** - Your Supabase account email
+    - **Password** - Your Supabase account password
 4. Click **Connect**
 
 That's it! Your vault will start syncing automatically.
@@ -86,6 +86,7 @@ That's it! Your vault will start syncing automatically.
 ### Automatic Sync
 
 Once connected, the plugin automatically:
+
 - Pushes local changes to Supabase (debounced by 2 seconds)
 - Pulls remote changes from other devices in real time
 - Syncs on startup (if **Sync on startup** is enabled)
@@ -94,10 +95,12 @@ Once connected, the plugin automatically:
 ### Manual Sync
 
 Use the **Actions** section in settings:
+
 - **Sync now** - Full two-way sync (push + pull)
 - **Fetch now** - Pull remote changes without pushing local files
 
 Or use the command palette:
+
 - `SupaBase Jump: Force sync now`
 - `SupaBase Jump: Fetch from database`
 - `SupaBase Jump: Show sync status`
@@ -126,18 +129,52 @@ The plugin works with any Supabase-compatible URL. Enter your self-hosted instan
 ### Database Schema
 
 The plugin creates a `vault_files` table with:
+
 - `id` (primary key) - `{vaultId}::{filePath}` (slashes replaced with `__SLASH__`)
 - `vault_id` - Unique ID for your vault (auto-generated)
 - `path` - File path relative to vault root
 - `content` - File content (for text files)
 - `storage_path` - Supabase Storage key (for binary files)
+- `frontmatter` (jsonb) - All YAML frontmatter properties from markdown files
+- `tags` (text[]) - Tag array extracted from the frontmatter `tags:` field
 - `mtime`, `ctime`, `size` - File metadata
 - `deleted` - Soft-delete flag
 - `user_id` - Row-level security (RLS) ensures you only see your own files
 
+### Querying Frontmatter from Supabase
+
+Once notes are synced you can query them directly from the Supabase SQL editor or any Postgres client:
+
+```sql
+-- All notes tagged "book"
+SELECT path, frontmatter->>'title', tags
+FROM vault_files
+WHERE 'book' = ANY(tags) AND deleted = false;
+
+-- Notes where status is not "done"
+SELECT path, frontmatter->>'status'
+FROM vault_files
+WHERE frontmatter->>'status' != 'done' AND deleted = false;
+
+-- Notes by a specific author, sorted by date
+SELECT path, frontmatter->>'date'
+FROM vault_files
+WHERE frontmatter->>'author' = 'Alice'
+ORDER BY frontmatter->>'date' DESC;
+
+-- Count notes per tag
+SELECT tag, COUNT(*)
+FROM vault_files, unnest(tags) AS tag
+WHERE deleted = false
+GROUP BY tag ORDER BY count DESC;
+```
+
+Frontmatter is stored as-is from your markdown files. Any key-value pair, nested or flat, ends up queryable via the `->>` and `->` jsonb operators.
+
 ### Storage Bucket
 
 Binary files are stored in a private `vault-attachments` bucket with:
+
 - RLS policies ensuring users can only access their own files
 - Base64url-encoded keys to handle special characters in filenames
 - Original file extensions preserved for MIME type inference
@@ -153,11 +190,13 @@ Binary files are stored in a private `vault-attachments` bucket with:
 ### "Email not confirmed"
 
 If you see this error after connecting:
+
 1. Check your email inbox for a confirmation link from Supabase
 2. Click the link to confirm your account
 3. Click **Connect** again in the plugin settings
 
 Or disable email confirmation:
+
 1. Go to **Supabase → Authentication → Providers → Email**
 2. Uncheck **"Confirm email"**
 
@@ -172,6 +211,7 @@ Or disable email confirmation:
 ### "Invalid key" errors
 
 The plugin automatically handles special characters in filenames by base64url-encoding storage keys. If you still see this error:
+
 1. Ensure you are running the latest version of the plugin
 2. Check the browser console for the full error message
 3. Report the issue on [GitHub](https://github.com/brianstm/obsidian-supabase-jump/issues) with the filename
@@ -192,10 +232,11 @@ npm run build
 
 ```
 src/
-├── main.ts       # Plugin entry point, lifecycle management
-├── settings.ts   # Settings interface and UI
-├── supabase.ts   # Supabase client and authentication
-└── sync.ts       # File sync logic and Realtime listeners
+├── main.ts          # Plugin entry point, lifecycle management
+├── settings.ts      # Settings interface and UI
+├── supabase.ts      # Supabase client and authentication
+├── sync.ts          # File sync logic and Realtime listeners
+└── frontmatter.ts   # YAML frontmatter parser
 ```
 
 ## Privacy & Security
@@ -216,6 +257,7 @@ MIT - see [LICENSE](LICENSE)
 ## Acknowledgments
 
 Built with:
+
 - [Obsidian Plugin API](https://docs.obsidian.md)
 - [Supabase](https://supabase.com)
 - [Supabase JS Client](https://github.com/supabase/supabase-js)

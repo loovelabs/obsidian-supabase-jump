@@ -5,21 +5,39 @@ All notable changes to SupaBase Jump will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.6] - 2026-03-17
+
+### Added
+
+- **Frontmatter parsing** - Markdown frontmatter properties and tags are now extracted on every push and stored in dedicated `frontmatter` (jsonb) and `tags` (text[]) columns in `vault_files`, enabling rich SQL queries directly from your Supabase dashboard (e.g. filter by tag, author, status, date, etc.)
+- **Config folder sync** - The `.obsidian/` directory is now synced automatically, including themes, appearance settings, snippets, and other plugin config files
+    - A 5-second polling watcher detects changes Obsidian writes directly to disk (bypasses vault events)
+    - Toggle on/off per vault via **Settings → Sync config folder** (default: on)
+    - Works with the full Obsidian config directory regardless of its configured name
+
+### Changed
+
+- Database schema: `vault_files` gains `frontmatter jsonb` and `tags text[]` columns; existing tables are migrated automatically via `ALTER TABLE … ADD COLUMN IF NOT EXISTS`
+- A GIN index on `tags` is created for fast array queries
+
 ## [1.0.5] - 2026-03-16
 
 ### Fixed
+
 - UI name capitalization
 - ESLint fixs
 
 ## [1.0.4] - 2026-03-16
 
 ### Fixed
+
 - UI name capitalization
 - ESLint fixs
 
 ## [1.0.3] - 2026-03-16
 
 ### Fixed
+
 - UI name capitalization
 
 ## [1.0.2] - 2026-03-16
@@ -30,42 +48,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Binary file support** via Supabase Storage (images, PDFs, etc.)
 - **Text file sync** stored directly in PostgreSQL
 - **One-click setup** via Supabase Management API
-  - Automatic database table creation
-  - Automatic storage bucket creation
-  - Automatic RLS policy setup
-  - Automatic Realtime publication configuration
+    - Automatic database table creation
+    - Automatic storage bucket creation
+    - Automatic RLS policy setup
+    - Automatic Realtime publication configuration
 - **Authentication** with Supabase Auth (email/password)
-  - Auto sign-up if account doesn't exist
-  - Email confirmation support
+    - Auto sign-up if account doesn't exist
+    - Email confirmation support
 - **Conflict resolution** based on modification time (higher mtime wins)
 - **Selective sync** with excluded folders support
 - **Status bar indicator** showing connection state (🔴/🟢/🔄/⚠️)
 - **Manual sync controls**
-  - "Sync now" button (full two-way sync)
-  - "Fetch now" button (pull-only sync)
+    - "Sync now" button (full two-way sync)
+    - "Fetch now" button (pull-only sync)
 - **Command palette integration**
-  - "Force sync now"
-  - "Fetch from database"
-  - "Show sync status"
+    - "Force sync now"
+    - "Fetch from database"
+    - "Show sync status"
 - **Automatic sync**
-  - Sync on startup (optional)
-  - Periodic sync with configurable interval (0-60 minutes)
-  - Debounced local file change detection (2 seconds)
+    - Sync on startup (optional)
+    - Periodic sync with configurable interval (0-60 minutes)
+    - Debounced local file change detection (2 seconds)
 - **Vault event listeners**
-  - File create, modify, delete, rename
-  - Echo-loop prevention for remote-triggered writes
+    - File create, modify, delete, rename
+    - Echo-loop prevention for remote-triggered writes
 - **Mobile support** (iOS and Android)
-  - Uses Obsidian's `requestUrl` API for CORS-free networking
-  - No Node.js built-ins (pure Web APIs)
+    - Uses Obsidian's `requestUrl` API for CORS-free networking
+    - No Node.js built-ins (pure Web APIs)
 - **Base64url encoding** for storage keys to handle special characters in filenames
 - **Settings UI**
-  - Initial setup section with progress feedback
-  - Credential management
-  - Vault ID auto-generation
-  - Excluded folders configuration
-  - Sync interval slider
-  - Last sync timestamp display
-  - Manual setup guide (fallback)
+    - Initial setup section with progress feedback
+    - Credential management
+    - Vault ID auto-generation
+    - Excluded folders configuration
+    - Sync interval slider
+    - Last sync timestamp display
+    - Manual setup guide (fallback)
 
 ### Technical Details
 

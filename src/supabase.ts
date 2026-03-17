@@ -62,11 +62,11 @@ export class SupabaseManager {
 			});
 			await this.signIn();
 		} catch (err) {
-			console.error("Supabase Jump: Initialization error", err);
+			console.error("Supabase jump: Initialization error", err);
 			this.client = null;
 			this.setStatus("error");
 			const msg = err instanceof Error ? err.message : String(err);
-			new Notice(`Supabase Jump: Initialization failed - ${msg}`, 8000);
+			new Notice(`Supabase jump: Initialization failed - ${msg}`, 8000);
 		}
 	}
 
@@ -113,7 +113,7 @@ export class SupabaseManager {
 		if (error.code === "email_not_confirmed") {
 			this.setStatus("offline");
 			new Notice(
-				"Supabase Jump: Email not confirmed\n\n" +
+				"Supabase jump: Email not confirmed\n\n" +
 					"Check your inbox and click the confirmation link, then press connect again.\n\n" +
 					'Or disable email confirmation: Supabase \u2192 authentication \u2192 providers \u2192 email \u2192 uncheck "Confirm email"',
 				12000,
@@ -137,12 +137,12 @@ export class SupabaseManager {
 
 			if (signUpResult.error) {
 				console.error(
-					"Supabase Jump: Sign-up failed",
+					"Supabase jump: Sign-up failed",
 					signUpResult.error,
 				);
 				this.setStatus("error");
 			new Notice(
-				`Supabase Jump: Sign-up failed - ${signUpResult.error.message}`,
+				`Supabase jump: Sign-up failed - ${signUpResult.error.message}`,
 			);
 				return;
 			}
@@ -151,7 +151,7 @@ export class SupabaseManager {
 			if (!confirmed) {
 				this.setStatus("offline");
 				new Notice(
-					"Supabase Jump: Account created - Confirmation email sent\n\n" +
+					"Supabase jump: Account created - Confirmation email sent\n\n" +
 						"Click the link in the email, then press connect\n\n" +
 						'Tip: Disable email confirmation in Supabase \u2192 Authentication \u2192 Providers \u2192 Email \u2192 Uncheck "Confirm email" to skip this step',
 					12000,
@@ -163,9 +163,9 @@ export class SupabaseManager {
 			return;
 		}
 
-	console.error("Supabase Jump: Sign-in failed", error);
+	console.error("Supabase jump: Sign-in failed", error);
 	this.setStatus("error");
-	new Notice(`Supabase Jump: Sign-in failed - ${error.message}`);
+	new Notice(`Supabase jump: Sign-in failed - ${error.message}`);
 	}
 
 	async signOut(): Promise<void> {
