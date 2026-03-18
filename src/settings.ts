@@ -405,7 +405,7 @@ export class SupaBaseJumpSettingTab extends PluginSettingTab {
 		new Setting(containerEl)
 			.setName("Sync config folder")
 			.setDesc(
-				"Watch and sync the .obsidian config folder (themes, snippets, plugin settings, etc.). Disable if you only want to sync vault notes.",
+				"Watch and sync the config folder (themes, snippets, plugin settings, etc.). Disable if you only want to sync vault notes.",
 			)
 			.addToggle((toggle) =>
 				toggle
