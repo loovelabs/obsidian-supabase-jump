@@ -18,6 +18,7 @@ export interface SupaBaseJumpSettings {
 	syncConfigFolder: boolean;
 	syncIntervalMinutes: number;
 	excludedFolders: string[];
+	platformExcludedPaths: string[];
 	lastSyncTime: number;
 }
 
@@ -32,6 +33,7 @@ export const DEFAULT_SETTINGS: SupaBaseJumpSettings = {
 	syncConfigFolder: true,
 	syncIntervalMinutes: 5,
 	excludedFolders: [],
+	platformExcludedPaths: [],
 	lastSyncTime: 0,
 };
 
@@ -75,6 +77,17 @@ export function isExcluded(
 	});
 }
 
+export function isPlatformExcluded(
+	filePath: string,
+	platformExcludedPaths: string[],
+): boolean {
+	if (platformExcludedPaths.length === 0) return false;
+	return platformExcludedPaths.some((folder) => {
+		const prefix = folder.replace(/\/$/, ""); // strip trailing slash
+		return filePath === prefix || filePath.startsWith(prefix + "/");
+	});
+}
+
 const SETUP_SQL = `-- vault_files table
 CREATE TABLE IF NOT EXISTS vault_files (
   id           text primary key,
@@ -88,7 +101,8 @@ CREATE TABLE IF NOT EXISTS vault_files (
   size         bigint not null,
   deleted      boolean default false,
   updated_at   timestamptz default now(),
-  user_id      uuid references auth.users(id)
+  user_id      uuid references auth.users(id),
+  platform     text default 'all'
 );
 CREATE INDEX IF NOT EXISTS vault_files_vault_path
   ON vault_files(vault_id, path);
@@ -133,10 +147,10 @@ export class SupaBaseJumpSettingTab extends PluginSettingTab {
 		new Setting(containerEl)
 			.setName("Personal access token")
 			.setDesc(
-				"Generate at supabase.com/dashboard/account/tokens - Only needed for this setup step, can be cleared after",
+				"Generate at supabase.com/dashboard/account/tokens. Only needed for the setup step - can be cleared after.",
 			)
 			.addText((text) => {
-				text.setPlaceholder("sbp_...")
+				text.setPlaceholder("Sbp_...")
 					.setValue(this.plugin.settings.personalAccessToken)
 					.onChange(async (value) => {
 						this.plugin.settings.personalAccessToken = value.trim();
@@ -148,7 +162,7 @@ export class SupaBaseJumpSettingTab extends PluginSettingTab {
 		new Setting(containerEl)
 			.setName("One-click project setup")
 			.setDesc(
-				"Creates the vault_files table, enables realtime, and creates the vault-attachments storage bucket; run once after creating your Supabase project",
+				"Creates the vault_files table, enables realtime, and creates the vault-attachments storage bucket. Run once after creating your supabase project.",
 			)
 			.addButton((btn) => {
 				btn.setButtonText("Run full setup").setCta();
@@ -186,7 +200,7 @@ export class SupaBaseJumpSettingTab extends PluginSettingTab {
 
 		new Setting(containerEl)
 			.setName("Project URL")
-			.setDesc("https://<project-ref>.supabase.co")
+			.setDesc("Your Supabase project URL (https://<project-ref>.supabase.co)")
 			.addText((text) =>
 				text
 					.setPlaceholder("https://xxxx.supabase.co")
@@ -201,7 +215,7 @@ export class SupaBaseJumpSettingTab extends PluginSettingTab {
 			.setName("Anon/public key")
 			.setDesc("Found under project settings → API")
 			.addText((text) => {
-				text.setPlaceholder("eyJ...")
+				text.setPlaceholder("EyJ...")
 					.setValue(this.plugin.settings.supabaseAnonKey)
 					.onChange(async (value) => {
 						this.plugin.settings.supabaseAnonKey = value.trim();
@@ -265,7 +279,7 @@ export class SupaBaseJumpSettingTab extends PluginSettingTab {
 		new Setting(containerEl)
 			.setName("Vault ID")
 			.setDesc(
-				"Unique identifier for this vault; files are namespaced under this ID in Supabase storage; each vault syncing to the same Supabase project needs a different ID",
+				"Unique identifier for this vault; files are namespaced under this ID in supabase storage; each vault syncing to the same supabase project needs a different ID",
 			)
 			.addText((text) => {
 				vaultIdText = text;
@@ -295,7 +309,7 @@ export class SupaBaseJumpSettingTab extends PluginSettingTab {
 		new Setting(containerEl)
 			.setName("Excluded folders")
 			.setDesc(
-				"Comma-separated list of folder paths to exclude from sync (e.g., templates, archive/old)",
+				"Comma-separated list of folder paths to exclude from sync (e.g. templates, archive/old)",
 			)
 			.addText((text) =>
 				text
@@ -306,6 +320,70 @@ export class SupaBaseJumpSettingTab extends PluginSettingTab {
 							.split(",")
 							.map((s) => s.trim())
 							.filter(Boolean);
+						await this.plugin.saveSettings();
+					}),
+			);
+
+		new Setting(containerEl)
+			.setName("Platform-specific config paths")
+			.setDesc(
+				"Config paths that sync only to the current platform (mobile or desktop). Toggle common paths below, or add custom ones.",
+			).setHeading();
+
+		const WELL_KNOWN_PATHS = [
+			{ path: "appearance.json", label: "Appearance (themes, fonts, colors)" },
+			{ path: "themes/", label: "Themes folder" },
+			{ path: "snippets/", label: "CSS Snippets folder" },
+			{ path: "plugins/", label: "All plugins folder" },
+			{ path: "community-plugins.json", label: "Installed plugins list" },
+			{ path: "hotkeys.json", label: "Custom hotkeys" },
+			{ path: "workspace.json", label: "Workspace layout" },
+		];
+
+		for (const item of WELL_KNOWN_PATHS) {
+			const isActive = this.plugin.settings.platformExcludedPaths.includes(item.path);
+			new Setting(containerEl)
+				.setName(item.label)
+				.setDesc(item.path)
+				.addToggle((toggle) =>
+					toggle.setValue(isActive).onChange(async (value) => {
+						const paths = this.plugin.settings.platformExcludedPaths;
+						if (value && !paths.includes(item.path)) {
+							paths.push(item.path);
+						} else if (!value) {
+							const idx = paths.indexOf(item.path);
+							if (idx >= 0) paths.splice(idx, 1);
+						}
+						await this.plugin.saveSettings();
+					}),
+				);
+		}
+
+		// Custom paths input for anything not in the list
+		const customPaths = this.plugin.settings.platformExcludedPaths.filter(
+			(p) => !WELL_KNOWN_PATHS.some((w) => w.path === p),
+		);
+		new Setting(containerEl)
+			.setName("Custom paths")
+			.setDesc(
+				"Comma-separated additional paths not listed above",
+			)
+			.addText((text) =>
+				text
+					.setPlaceholder("my-plugin/, custom.json")
+					.setValue(customPaths.join(", "))
+					.onChange(async (value) => {
+						const knownActive = this.plugin.settings.platformExcludedPaths.filter(
+							(p) => WELL_KNOWN_PATHS.some((w) => w.path === p),
+						);
+						const custom = value
+							.split(",")
+							.map((s) => s.trim())
+							.filter(Boolean);
+						this.plugin.settings.platformExcludedPaths = [
+							...knownActive,
+							...custom,
+						];
 						await this.plugin.saveSettings();
 					}),
 			);
@@ -327,7 +405,7 @@ export class SupaBaseJumpSettingTab extends PluginSettingTab {
 		new Setting(containerEl)
 			.setName("Sync config folder")
 			.setDesc(
-				"Watch and sync the obsidian config folder (themes, snippets, plugin settings, etc.); disable if you only want to sync vault notes",
+				"Watch and sync the .obsidian config folder (themes, snippets, plugin settings, etc.). Disable if you only want to sync vault notes.",
 			)
 			.addToggle((toggle) =>
 				toggle
@@ -341,7 +419,7 @@ export class SupaBaseJumpSettingTab extends PluginSettingTab {
 		new Setting(containerEl)
 			.setName("Sync interval (minutes)")
 			.setDesc(
-				"How often to sync in the background; set to 0 to disable background sync",
+				"How often to sync in the background. Set to 0 to disable.",
 			)
 			.addSlider((slider) =>
 				slider
@@ -378,7 +456,7 @@ export class SupaBaseJumpSettingTab extends PluginSettingTab {
 		new Setting(containerEl)
 			.setName("Fetch from database")
 			.setDesc(
-				"Download all remote changes to this device without pushing local files",
+				"Download all remote changes without pushing local files",
 			)
 			.addButton((btn) =>
 				btn.setButtonText("Fetch now").onClick(async () => {

@@ -32,7 +32,6 @@ function parseYamlBlock(yaml: string): Record<string, unknown> {
 	while (i < lines.length) {
 		const line = lines[i] ?? "";
 
-		// Skip blank lines and comments
 		if (!line.trim() || line.trimStart().startsWith("#")) {
 			i++;
 			continue;
@@ -48,7 +47,6 @@ function parseYamlBlock(yaml: string): Record<string, unknown> {
 		const valueStr = keyMatch[2]?.trim() ?? "";
 
 		if (valueStr === "" || valueStr === "|" || valueStr === ">") {
-			// Block sequence / scalar — collect indented lines that follow
 			const items: string[] = [];
 			i++;
 			while (i < lines.length && /^[ \t]/.test(lines[i] ?? "")) {
@@ -95,7 +93,7 @@ function parseScalar(value: string): unknown {
 		return value.slice(1, -1);
 	}
 
-	// Integer / float
+	// Integer or float
 	if (/^-?\d+$/.test(value)) return parseInt(value, 10);
 	if (/^-?\d+\.\d+$/.test(value)) return parseFloat(value);
 

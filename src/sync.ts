@@ -1,6 +1,6 @@
-import { Notice, TFile, Vault } from "obsidian";
+import { Notice, TFile, Vault, Platform } from "obsidian";
 import { SupabaseClient } from "@supabase/supabase-js";
-import { isBinary, isExcluded } from "./settings";
+import { isBinary, isExcluded, isPlatformExcluded } from "./settings";
 import { parseFrontmatter } from "./frontmatter";
 import { SyncStatus } from "./supabase";
 
@@ -43,6 +43,7 @@ export interface VaultFileRow {
 	storage_path: string | null;
 	frontmatter: Record<string, unknown> | null;
 	tags: string[] | null;
+	platform: string;
 	mtime: number;
 	ctime: number;
 	size: number;
@@ -52,13 +53,13 @@ export interface VaultFileRow {
 
 export interface SyncHost {
 	readonly vault: Vault;
-	/** Settings object - properties are mutated in-place across saves. */
 	readonly settings: {
 		vaultId: string;
 		syncOnStartup: boolean;
 		syncConfigFolder: boolean;
 		syncIntervalMinutes: number;
 		excludedFolders: string[];
+		platformExcludedPaths: string[];
 		lastSyncTime: number;
 	};
 	readonly supabase: SupabaseClient | null;
@@ -86,14 +87,14 @@ export class SyncEngine {
 
 	private get client(): SupabaseClient {
 		const { supabase } = this.host;
-		if (!supabase) throw new Error("Supabase jump: Not Connected.");
+		if (!supabase) throw new Error("Supabase jump: not connected.");
 		return supabase;
 	}
 
 	private async getUserId(): Promise<string> {
 		const { data, error } = await this.client.auth.getUser();
 		if (error || !data.user)
-			throw new Error("Supabase jump: Not Authenticated.");
+			throw new Error("Supabase jump: not authenticated.");
 		return data.user.id;
 	}
 
@@ -108,6 +109,12 @@ export class SyncEngine {
 		return isExcluded(filePath, this.host.settings.excludedFolders);
 	}
 
+	private shouldPull(row: VaultFileRow): boolean {
+		if (row.platform === "all") return true;
+		const currentPlatform = Platform.isMobile ? "mobile" : "desktop";
+		return row.platform === currentPlatform;
+	}
+
 	private async listAdapterFiles(folderPath: string): Promise<string[]> {
 		const result: string[] = [];
 		try {
@@ -117,7 +124,7 @@ export class SyncEngine {
 				result.push(...(await this.listAdapterFiles(sub)));
 			}
 		} catch {
-			// folder doesn't exist or not accessible
+			// Folder may already exist
 		}
 		return result;
 	}
@@ -150,6 +157,7 @@ export class SyncEngine {
 				is_binary: true,
 				storage_path: storagePath,
 				content: null,
+				platform: this.getPlatformForPath(filePath),
 				mtime: stat.mtime,
 				ctime: stat.ctime ?? stat.mtime,
 				size: stat.size ?? 0,
@@ -177,6 +185,7 @@ export class SyncEngine {
 				frontmatter:
 					Object.keys(properties).length > 0 ? properties : null,
 				tags: tags.length > 0 ? tags : null,
+				platform: this.getPlatformForPath(filePath),
 				mtime: stat.mtime,
 				ctime: stat.ctime ?? stat.mtime,
 				size: stat.size ?? 0,
@@ -185,6 +194,11 @@ export class SyncEngine {
 			});
 			if (error) throw new Error(`Upsert failed - ${error.message}`);
 		}
+	}
+
+	private getPlatformForPath(filePath: string): string {
+		const isSpecific = isPlatformExcluded(filePath, this.host.settings.platformExcludedPaths);
+		return isSpecific ? (Platform.isMobile ? "mobile" : "desktop") : "all";
 	}
 
 	private markIgnore(path: string): void {
@@ -203,7 +217,7 @@ export class SyncEngine {
 				try {
 					await this.host.vault.createFolder(current);
 				} catch {
-					// Folder already exists
+					// Folder may already exist
 				}
 			}
 		}
@@ -226,10 +240,10 @@ export class SyncEngine {
 				`Supabase jump: pushFile failed for "${file.path}"`,
 				err,
 			);
-		new Notice(
-			`Supabase jump: Push failed for "${file.path}" - ${msg}`,
-		);
-			throw err; // re-throw so fullSync can count errors
+			new Notice(
+				`Supabase jump: Push failed for "${file.path}" - ${msg}`,
+			);
+			throw err;
 		}
 	}
 
@@ -265,6 +279,7 @@ export class SyncEngine {
 			is_binary: true,
 			storage_path: storagePath,
 			content: null,
+			platform: this.getPlatformForPath(file.path),
 			mtime: file.stat.mtime,
 			ctime: file.stat.ctime ?? file.stat.mtime,
 			size: file.stat.size ?? 0,
@@ -286,7 +301,7 @@ export class SyncEngine {
 			content = await this.host.vault.read(file);
 		} catch (err) {
 			throw new Error(
-				`could not read "${file.path}" - ${err instanceof Error ? err.message : String(err)}`,
+				`Could not read "${file.path}" - ${err instanceof Error ? err.message : String(err)}`,
 			);
 		}
 
@@ -305,6 +320,7 @@ export class SyncEngine {
 			content,
 			frontmatter: Object.keys(properties).length > 0 ? properties : null,
 			tags: tags.length > 0 ? tags : null,
+			platform: this.getPlatformForPath(file.path),
 			mtime: file.stat.mtime,
 			ctime: file.stat.ctime ?? file.stat.mtime,
 			size: file.stat.size ?? 0,
@@ -331,7 +347,7 @@ export class SyncEngine {
 				err,
 			);
 			new Notice(`Supabase jump: Pull failed for "${row.path}" - ${msg}`);
-			throw err; // re-throw so fullSync can count errors
+			throw err;
 		}
 	}
 
@@ -364,7 +380,7 @@ export class SyncEngine {
 			try {
 				await this.host.vault.createBinary(row.path, buffer);
 			} catch {
-				// Final fallback for paths outside vault index (e.g., .obsidian/)
+				// Fallback for paths outside vault index
 				await this.host.vault.adapter.writeBinary(row.path, buffer);
 			}
 		}
@@ -385,7 +401,7 @@ export class SyncEngine {
 			try {
 				await this.host.vault.create(row.path, content);
 			} catch {
-				// Final fallback for paths outside vault index (e.g., .obsidian/)
+				// Fallback for paths outside vault index
 				await this.host.vault.adapter.write(row.path, content);
 			}
 		}
@@ -440,10 +456,10 @@ export class SyncEngine {
 	async fetchOnly(): Promise<void> {
 		const { vaultId } = this.host.settings;
 
-	if (!vaultId) {
-		new Notice("Supabase jump: vault ID is not set - cannot fetch");
-		return;
-	}
+		if (!vaultId) {
+			new Notice("Supabase jump: vault ID is not set - cannot fetch");
+			return;
+		}
 
 		this.host.setStatus("syncing");
 		const errors: string[] = [];
@@ -470,6 +486,7 @@ export class SyncEngine {
 
 			for (const row of remoteRows) {
 				if (this.shouldSkip(row.path)) continue;
+				if (!this.shouldPull(row)) continue;
 				const local = localMap.get(row.path);
 				if (!local || row.mtime > local.stat.mtime) {
 					try {
@@ -491,19 +508,19 @@ export class SyncEngine {
 		} catch (err) {
 			console.error("Supabase jump: fetchOnly failed", err);
 			this.host.setStatus("error");
-		new Notice(
-			`Supabase jump: Fetch failed - ${err instanceof Error ? err.message : String(err)}`,
-		);
+			new Notice(
+				`Supabase jump: Fetch failed - ${err instanceof Error ? err.message : String(err)}`,
+			);
 		}
 	}
 
 	async fullSync(): Promise<void> {
 		const { vaultId } = this.host.settings;
 
-	if (!vaultId) {
-		new Notice("Supabase jump: vault ID is not set - cannot sync");
-		return;
-	}
+		if (!vaultId) {
+			new Notice("Supabase jump: vault ID is not set - cannot sync");
+			return;
+		}
 
 		this.host.setStatus("syncing");
 		const errors: string[] = [];
@@ -543,7 +560,7 @@ export class SyncEngine {
 				}
 			}
 
-			// Push config files that vault.getFiles() does not enumerate
+			// Push config files not enumerated by vault.getFiles()
 			const configPaths = await this.listAdapterFiles(
 				this.host.vault.configDir,
 			);
@@ -571,6 +588,7 @@ export class SyncEngine {
 
 			for (const row of remoteRows) {
 				if (this.shouldSkip(row.path)) continue;
+				if (!this.shouldPull(row)) continue;
 				const local = localMap.get(row.path);
 				if (!local || row.mtime > local.stat.mtime) {
 					try {
@@ -591,11 +609,11 @@ export class SyncEngine {
 				s > 0 ? ` (${s} error${s > 1 ? "s" : ""} - see console)` : "";
 			new Notice(`Supabase jump: Sync complete${suffix}`);
 		} catch (err) {
-			console.error("Supabase jump: FullSync failed", err);
+			console.error("Supabase jump: fullSync failed", err);
 			this.host.setStatus("error");
-		new Notice(
-			`Supabase jump: Sync failed - ${err instanceof Error ? err.message : String(err)}`,
-		);
+			new Notice(
+				`Supabase jump: Sync failed - ${err instanceof Error ? err.message : String(err)}`,
+			);
 		}
 	}
 
@@ -628,7 +646,7 @@ export class SyncEngine {
 			.subscribe((status: string) => {
 				if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") {
 					console.error(
-						`Supabase jump: Realtime channel ${status.toLowerCase()} — reconnecting in ${REALTIME_RECONNECT_MS / 1000}s`,
+						`Supabase jump: Realtime channel ${status.toLowerCase()} - reconnecting in ${REALTIME_RECONNECT_MS / 1000}s`,
 					);
 					this.host.setStatus("error");
 					new Notice(
@@ -673,7 +691,7 @@ export class SyncEngine {
 		const localMtime =
 			localFile instanceof TFile ? localFile.stat.mtime : 0;
 
-		if (row.mtime > localMtime) {
+		if (row.mtime > localMtime && this.shouldPull(row)) {
 			await this.pullFile(row);
 		}
 	}
@@ -698,8 +716,7 @@ export class SyncEngine {
 	startConfigWatcher(): void {
 		if (this.configWatcherId !== null) return;
 
-		// Warm the cache so we don't push everything on first tick
-		this.warmConfigCache().catch(() => {});
+		this.warmConfigCache().catch(() => { });
 
 		this.configWatcherId = window.setInterval(() => {
 			this.pollConfigDir().catch((err) =>
@@ -792,7 +809,7 @@ export class SyncEngine {
 					await this.deleteRemoteFile(path);
 				}
 			} catch {
-				// Error already logged
+				// Error already surfaced by pushFile/deleteRemoteFile
 			}
 		}
 	}

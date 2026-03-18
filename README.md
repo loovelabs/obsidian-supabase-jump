@@ -1,7 +1,7 @@
 # <div align="center">SupaBase Jump for Obsidian</div>
 
 <div align="center">
-Sync your Obsidian vault with Supabase in real time. Access your notes from any device with automatic conflict resolution and live updates.
+Sync your Obsidian vault with Supabase in real time. Edit the same note on two devices simultaneously, keep platform-specific settings separate, and access your notes from anywhere.
 </div>
 
 <br />
@@ -26,12 +26,14 @@ Sync your Obsidian vault with Supabase in real time. Access your notes from any 
 
 ## Features
 
-- **Real-time sync** - Changes propagate instantly across all your devices via Supabase Realtime
+- **Real-time collaborative editing** - Two devices sharing the same account can edit the same note at the same time. Yjs CRDTs handle merging automatically; updates broadcast instantly as you type with no duplication.
+- **Real-time sync** - Changes propagate across all your devices via Supabase Realtime
 - **Conflict resolution** - Newer files always win (based on modification time)
 - **Binary file support** - Images, PDFs, and other attachments sync via Supabase Storage
 - **Frontmatter parsing** - Properties and tags from markdown frontmatter are stored in dedicated columns for SQL querying
 - **Selective sync** - Exclude specific folders from syncing
-- **Settings sync** - `.obsidian/` folder syncs automatically to share themes, snippets, and plugin settings across devices
+- **Settings sync** - The `.obsidian/` folder syncs automatically to share themes, snippets, and plugin settings across devices
+- **Platform-specific config** - Choose which config files sync only to mobile or only to desktop (e.g. keep separate themes or plugin lists per platform)
 - **Self-hosted support** - Works with any Supabase-compatible instance, not just supabase.com
 - **Mobile compatible** - Works on both desktop and mobile Obsidian
 - **One-click setup** - Automated database and storage configuration
@@ -68,13 +70,13 @@ The plugin is pending review in the community plugin store. Install it via **BRA
 ### 3. Configure the Plugin
 
 1. Open **Settings → SupaBase Jump**
-2. In the **Initial Setup** section:
+2. In the **Initial setup** section:
     - Generate a **Personal Access Token** at [supabase.com/dashboard/account/tokens](https://supabase.com/dashboard/account/tokens)
     - Paste it into the **Personal access token** field
     - Click **Run full setup** - this creates the database table, storage bucket, and enables Realtime
 3. Fill in your credentials:
-    - **Supabase URL** - Your project URL (e.g., `https://xxxxx.supabase.co`)
-    - **Supabase anon key** - Your anon/public key
+    - **Project URL** - Your Supabase project URL (e.g. `https://xxxxx.supabase.co`)
+    - **Anon/public key** - Your anon/public key
     - **Email** - Your Supabase account email
     - **Password** - Your Supabase account password
 4. Click **Connect**
@@ -87,10 +89,32 @@ That's it! Your vault will start syncing automatically.
 
 Once connected, the plugin automatically:
 
-- Pushes local changes to Supabase (debounced by 2 seconds)
+- Pushes local changes to Supabase (debounced by 1 second)
 - Pulls remote changes from other devices in real time
 - Syncs on startup (if **Sync on startup** is enabled)
 - Syncs periodically based on your **Sync interval** setting
+
+### Real-Time Collaborative Editing
+
+When two devices open the same markdown note, they join an ephemeral Supabase Realtime channel for that file. Edits are merged using [Yjs](https://github.com/yjs/yjs) CRDTs. Changes appear on the other device instantly as you type, with no full-document replacement or text duplication. The Yjs state is kept only in memory; once you close the note the channel is released and normal `mtime`-based conflict resolution takes over.
+
+### Platform-Specific Config Paths
+
+In **Settings → Platform-specific config paths**, toggle which Obsidian config files should sync only to the current platform (mobile or desktop):
+
+| Toggle                 | Path                     | Example use                    |
+| ---------------------- | ------------------------ | ------------------------------ |
+| Appearance             | `appearance.json`        | Different theme on mobile      |
+| Themes folder          | `themes/`                | Mobile-only themes             |
+| CSS Snippets           | `snippets/`              | Mobile/desktop-only CSS        |
+| All plugins            | `plugins/`               | Desktop-only plugin data       |
+| Installed plugins list | `community-plugins.json` | Different plugins per platform |
+| Custom hotkeys         | `hotkeys.json`           | Different shortcuts on mobile  |
+| Workspace layout       | `workspace.json`         | Different pane layout          |
+
+Use the **Custom paths** field to add any other paths not listed above.
+
+When a file matches a platform-specific path, it is tagged in the database (`platform = 'mobile'` or `platform = 'desktop'`). Pull operations skip rows tagged for a different platform.
 
 ### Manual Sync
 
@@ -109,9 +133,9 @@ Or use the command palette:
 
 To exclude folders from syncing, add them to **Excluded folders** (comma-separated) in settings.
 
-Example: `Templates,archive/old`
+Example: `Templates, archive/old`
 
-By default no folders are excluded — including `.obsidian/` and `.trash/`. If you want to keep vault settings from syncing, add `.obsidian` to your excluded list.
+By default no folders are excluded. If you want to prevent vault settings from syncing entirely, add `.obsidian` to your excluded list (or use the platform-specific config paths feature for finer control).
 
 ### Self-Hosted Supabase
 
@@ -123,23 +147,27 @@ The plugin works with any Supabase-compatible URL. Enter your self-hosted instan
 
 - **Text files** (`.md`, `.txt`, etc.) - Content stored directly in the `vault_files` PostgreSQL table
 - **Binary files** (images, PDFs, etc.) - Uploaded to Supabase Storage; metadata in `vault_files`
-- **Realtime sync** - Supabase Realtime broadcasts changes to all connected clients
-- **Conflict resolution** - Higher `mtime` (modification time) wins
+- **Database sync** - Supabase Realtime broadcasts row changes to all connected clients for file-level sync
+- **Live editing sync** - A per-file Supabase Broadcast channel carries Yjs CRDT updates for same-note co-editing
+- **Conflict resolution** - Higher `mtime` (modification time) wins for file-level sync; Yjs handles in-session edits automatically
 
 ### Database Schema
 
 The plugin creates a `vault_files` table with:
 
-- `id` (primary key) - `{vaultId}::{filePath}` (slashes replaced with `__SLASH__`)
-- `vault_id` - Unique ID for your vault (auto-generated)
-- `path` - File path relative to vault root
-- `content` - File content (for text files)
-- `storage_path` - Supabase Storage key (for binary files)
-- `frontmatter` (jsonb) - All YAML frontmatter properties from markdown files
-- `tags` (text[]) - Tag array extracted from the frontmatter `tags:` field
-- `mtime`, `ctime`, `size` - File metadata
-- `deleted` - Soft-delete flag
-- `user_id` - Row-level security (RLS) ensures you only see your own files
+| Column                   | Type      | Description                                       |
+| ------------------------ | --------- | ------------------------------------------------- |
+| `id`                     | text (PK) | `{vaultId}::{filePath}` (slashes → `__SLASH__`)   |
+| `vault_id`               | text      | Unique ID for your vault                          |
+| `path`                   | text      | File path relative to vault root                  |
+| `content`                | text      | File content (text files only)                    |
+| `storage_path`           | text      | Supabase Storage key (binary files only)          |
+| `frontmatter`            | jsonb     | All YAML frontmatter properties                   |
+| `tags`                   | text[]    | Tags extracted from the `tags:` frontmatter field |
+| `platform`               | text      | `'all'`, `'mobile'`, or `'desktop'`               |
+| `mtime`, `ctime`, `size` | bigint    | File metadata                                     |
+| `deleted`                | boolean   | Soft-delete flag                                  |
+| `user_id`                | uuid      | Used by RLS to scope rows to each user            |
 
 ### Querying Frontmatter from Supabase
 
@@ -167,9 +195,11 @@ SELECT tag, COUNT(*)
 FROM vault_files, unnest(tags) AS tag
 WHERE deleted = false
 GROUP BY tag ORDER BY count DESC;
-```
 
-Frontmatter is stored as-is from your markdown files. Any key-value pair, nested or flat, ends up queryable via the `->>` and `->` jsonb operators.
+-- Desktop-only config files
+SELECT path FROM vault_files
+WHERE platform = 'desktop' AND deleted = false;
+```
 
 ### Storage Bucket
 
@@ -208,6 +238,13 @@ Or disable email confirmation:
 4. Check that the file path is not in your **Excluded folders** list
 5. Try **Sync now** manually from settings
 
+### Real-time editing not working
+
+1. Ensure both devices are connected (🟢 Synced in the status bar)
+2. Make sure both devices have the same file open
+3. Check the browser console for channel subscription errors
+4. The CRDT channel only activates for `.md` files in a MarkdownView
+
 ### "Invalid key" errors
 
 The plugin automatically handles special characters in filenames by base64url-encoding storage keys. If you still see this error:
@@ -232,17 +269,19 @@ npm run build
 
 ```
 src/
-├── main.ts          # Plugin entry point, lifecycle management
-├── settings.ts      # Settings interface and UI
-├── supabase.ts      # Supabase client and authentication
-├── sync.ts          # File sync logic and Realtime listeners
-└── frontmatter.ts   # YAML frontmatter parser
+├── main.ts            # Plugin entry point and lifecycle management
+├── settings.ts        # Settings interface and UI
+├── supabase.ts        # Supabase client and authentication
+├── sync.ts            # File sync logic and Realtime listeners
+├── realtime-crdt.ts   # Yjs CRDT manager for real-time co-editing
+└── frontmatter.ts     # YAML frontmatter parser
 ```
 
 ## Privacy & Security
 
 - Your vault data is stored in **your own Supabase project** - not on third-party servers
-- All network requests use **Row Level Security (RLS)** - you can only access your own files
+- All database access uses **Row Level Security (RLS)** - you can only read and write your own files
+- The CRDT broadcast channel is **ephemeral** - no Yjs state is persisted to the database
 - Passwords are hashed by Supabase Auth - the plugin never stores plaintext passwords
 - No telemetry or analytics - the plugin is fully open source
 
@@ -261,3 +300,4 @@ Built with:
 - [Obsidian Plugin API](https://docs.obsidian.md)
 - [Supabase](https://supabase.com)
 - [Supabase JS Client](https://github.com/supabase/supabase-js)
+- [Yjs](https://github.com/yjs/yjs) - CRDT library for real-time collaborative editing

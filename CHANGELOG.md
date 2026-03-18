@@ -5,6 +5,14 @@ All notable changes to SupaBase Jump will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0] - 2026-03-18
+
+### Added
+
+- **Real-time collaborative editing** - Two devices using the same account can now edit the same note simultaneously without conflicts. Yjs CRDTs are used for automatic, conflict-free merging; updates are broadcast ephemerally over a Supabase Realtime channel so the database is not bloated. Syncs instantly as you type with a character-level patches to the editor (no full replace, no duplication).
+- **Platform-specific config paths** - Settings now include a toggle panel listing the most common Obsidian config files (`appearance.json`, `themes/`, `snippets/`, `plugins/`, `community-plugins.json`, `hotkeys.json`, `workspace.json`). Toggle a path to make it sync only to the current platform (mobile or desktop). A free-text "Custom paths" field covers anything not in the list.
+- **`platform` column in `vault_files`** - Each row is tagged as `'all'`, `'mobile'`, or `'desktop'`. Pull operations skip rows tagged for a different platform.
+
 ## [1.0.7] - 2026-03-17
 
 ### Fixed

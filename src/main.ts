@@ -22,10 +22,12 @@ CREATE TABLE IF NOT EXISTS vault_files (
   size         bigint not null,
   deleted      boolean default false,
   updated_at   timestamptz default now(),
-  user_id      uuid references auth.users(id)
+  user_id      uuid references auth.users(id),
+  platform     text default 'all'
 );
 ALTER TABLE vault_files ADD COLUMN IF NOT EXISTS frontmatter jsonb;
 ALTER TABLE vault_files ADD COLUMN IF NOT EXISTS tags text[];
+ALTER TABLE vault_files ADD COLUMN IF NOT EXISTS platform text DEFAULT 'all';
 CREATE INDEX IF NOT EXISTS vault_files_vault_path ON vault_files(vault_id, path);
 CREATE INDEX IF NOT EXISTS vault_files_vault_mtime ON vault_files(vault_id, mtime);
 CREATE INDEX IF NOT EXISTS vault_files_tags ON vault_files USING gin(tags);
@@ -82,6 +84,7 @@ import {
 } from "./settings";
 import { SupabaseManager, SyncStatus } from "./supabase";
 import { SyncEngine, VaultFileRow } from "./sync";
+import { RealtimeCrdtManager } from "./realtime-crdt";
 
 export default class SupaBaseJumpPlugin extends Plugin {
 	settings: SupaBaseJumpSettings;
@@ -89,6 +92,7 @@ export default class SupaBaseJumpPlugin extends Plugin {
 
 	private manager: SupabaseManager;
 	private syncEngine: SyncEngine;
+	private crdtManager: RealtimeCrdtManager;
 
 	get supabase(): SupabaseClient | null {
 		return this.manager.client;
@@ -105,6 +109,7 @@ export default class SupaBaseJumpPlugin extends Plugin {
 		this.manager = new SupabaseManager(this);
 		this.manager.setStatus("offline");
 		this.syncEngine = new SyncEngine(this);
+		this.crdtManager = new RealtimeCrdtManager(this);
 
 		this.addSettingTab(new SupaBaseJumpSettingTab(this.app, this));
 		this.registerVaultEvents();
@@ -137,10 +142,14 @@ export default class SupaBaseJumpPlugin extends Plugin {
 
 	async initSupabase(): Promise<void> {
 		this.syncEngine.stopAll();
+		this.crdtManager.stop();
 
 		await this.manager.init();
 
 		if (!this.supabase) return; // connection failed - manager already reported error
+
+		this.crdtManager.setSupabase(this.supabase, this.settings.vaultId);
+		this.crdtManager.start();
 
 		this.syncEngine.startRealtimeListener();
 		this.syncEngine.startConfigWatcher();
@@ -164,11 +173,13 @@ export default class SupaBaseJumpPlugin extends Plugin {
 
 	async signOut(): Promise<void> {
 		this.syncEngine.stopAll();
+		this.crdtManager.stop();
 		await this.manager.signOut();
 	}
 
 	cleanup(): void {
 		this.syncEngine.stopAll();
+		this.crdtManager.stop();
 		this.manager.cleanup();
 	}
 
@@ -344,10 +355,10 @@ export default class SupaBaseJumpPlugin extends Plugin {
 			if (!bucketOk) {
 				new Notice(
 					"Supabase jump: Could not auto-create Storage bucket.\n\n" +
-						"Create it manually: Supabase \u2192 Storage \u2192 New bucket\n" +
-						"  Name: vault-attachments\n" +
-						"  Public: OFF\n\n" +
-						"Then continue - The RLS policy was applied in step 3.",
+					"Create it manually: Supabase \u2192 Storage \u2192 New bucket\n" +
+					"  Name: vault-attachments\n" +
+					"  Public: OFF\n\n" +
+					"Then continue - The RLS policy was applied in step 3.",
 					14000,
 				);
 			}

@@ -45,10 +45,10 @@ export class SupabaseManager {
 		try {
 			new URL(supabaseUrl);
 		} catch {
-	this.setStatus("error");
-	new Notice(
-		"Supabase jump: project URL is not a valid URL - check your settings",
-	);
+			this.setStatus("error");
+			new Notice(
+				"Supabase jump: project URL is not a valid URL - check your settings",
+			);
 			return;
 		}
 
@@ -70,15 +70,6 @@ export class SupabaseManager {
 		}
 	}
 
-	/**
-	 * Attempts signInWithPassword. Falls back to signUp when Supabase returns
-	 * "invalid_credentials" - this covers the first-run case on projects where
-	 * email confirmation is disabled.
-	 *
-	 * Network-level throws (e.g. "Failed to fetch" when the project is paused
-	 * or the URL is unreachable) are re-thrown as plain Errors so init()'s
-	 * catch block can surface them in the Notice.
-	 */
 	async signIn(): Promise<void> {
 		if (!this.client) return;
 
@@ -99,7 +90,7 @@ export class SupabaseManager {
 			});
 		} catch (err) {
 			const msg = err instanceof Error ? err.message : String(err);
-			throw new Error(`network error during sign-in - ${msg}`);
+			throw new Error(`Network error during sign-in - ${msg}`);
 		}
 
 		const { error } = signInResult;
@@ -114,8 +105,8 @@ export class SupabaseManager {
 			this.setStatus("offline");
 			new Notice(
 				"Supabase jump: Email not confirmed\n\n" +
-					"Check your inbox and click the confirmation link, then press connect again.\n\n" +
-					'Or disable email confirmation: Supabase \u2192 authentication \u2192 providers \u2192 email \u2192 uncheck "Confirm email"',
+				"Check your inbox and click the confirmation link, then press connect again.\n\n" +
+				'Or disable email confirmation: Supabase \u2192 authentication \u2192 providers \u2192 email \u2192 uncheck "Confirm email"',
 				12000,
 			);
 			return;
@@ -137,13 +128,13 @@ export class SupabaseManager {
 
 			if (signUpResult.error) {
 				console.error(
-					"Supabase jump: Sign-up failed",
+					"Supabase jump: sign-up failed",
 					signUpResult.error,
 				);
 				this.setStatus("error");
-			new Notice(
-				`Supabase jump: Sign-up failed - ${signUpResult.error.message}`,
-			);
+				new Notice(
+					`Supabase jump: Sign-up failed - ${signUpResult.error.message}`,
+				);
 				return;
 			}
 
@@ -152,8 +143,8 @@ export class SupabaseManager {
 				this.setStatus("offline");
 				new Notice(
 					"Supabase jump: Account created - Confirmation email sent\n\n" +
-						"Click the link in the email, then press connect\n\n" +
-						'Tip: Disable email confirmation in Supabase \u2192 Authentication \u2192 Providers \u2192 Email \u2192 Uncheck "Confirm email" to skip this step',
+					"Click the link in the email, then press connect\n\n" +
+					'Tip: Disable email confirmation in Supabase \u2192 Authentication \u2192 Providers \u2192 Email \u2192 Uncheck "Confirm email" to skip this step',
 					12000,
 				);
 			} else {
@@ -163,9 +154,9 @@ export class SupabaseManager {
 			return;
 		}
 
-	console.error("Supabase jump: Sign-in failed", error);
-	this.setStatus("error");
-	new Notice(`Supabase jump: Sign-in failed - ${error.message}`);
+		console.error("Supabase jump: sign-in failed", error);
+		this.setStatus("error");
+		new Notice(`Supabase jump: Sign-in failed - ${error.message}`);
 	}
 
 	async signOut(): Promise<void> {
