@@ -213,7 +213,7 @@ export class SupaBaseJumpSettingTab extends PluginSettingTab {
 
 		new Setting(containerEl)
 			.setName("Anon/public key")
-			.setDesc("Found under project settings → API (eyJ...)")
+			.setDesc("Found under project settings → API")
 			.addText((text) => {
 				text.setPlaceholder("••••••••")
 					.setValue(this.plugin.settings.supabaseAnonKey)
