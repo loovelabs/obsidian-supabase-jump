@@ -86,6 +86,7 @@ export class SyncEngine {
 	private configWatcherId: number | null = null;
 	private configFileCache = new Map<string, number>();
 	private ignorePaths = new Set<string>();
+	private systemPaths = new Set<string>();
 	private realtimeReconnectTimer: number | null = null;
 
 	// Injected by main.ts after both managers are created.
@@ -479,7 +480,7 @@ export class SyncEngine {
 	}
 
 	async fetchOnly(): Promise<void> {
-		const { vaultId } = this.host.settings;
+		const { vaultId, systemVaultId } = this.host.settings;
 
 		if (!vaultId) {
 			new Notice("Supabase jump: vault ID is not set - cannot fetch");
@@ -490,10 +491,16 @@ export class SyncEngine {
 		const errors: string[] = [];
 
 		try {
+			// Build vault ID filter: always include user vault, optionally include system vault
+			const vaultIds = [vaultId];
+			if (systemVaultId && systemVaultId !== vaultId) {
+				vaultIds.push(systemVaultId);
+			}
+
 			const { data, error } = await this.client
 				.from(DB_TABLE)
 				.select("*")
-				.eq("vault_id", vaultId)
+				.in("vault_id", vaultIds)
 				.eq("deleted", false);
 
 			if (error)
@@ -511,6 +518,10 @@ export class SyncEngine {
 				if (row.mtime > localMtime) {
 					try {
 						await this.pullFile(row);
+						// Track system vault files to prevent push-back
+						if (row.vault_id === systemVaultId && systemVaultId) {
+							this.systemPaths.add(row.path);
+						}
 					} catch {
 						errors.push(row.path);
 					}
@@ -619,6 +630,10 @@ export class SyncEngine {
 				if (row.mtime > localMtime) {
 					try {
 						await this.pullFile(row);
+						// Track system vault files to prevent push-back
+						if (row.vault_id === systemVaultId && systemVaultId) {
+							this.systemPaths.add(row.path);
+						}
 					} catch {
 						errors.push(row.path);
 					}
@@ -826,6 +841,7 @@ export class SyncEngine {
 
 	queueChange(path: string, type: "push" | "delete"): void {
 		if (this.shouldSkip(path) || this.ignorePaths.has(path)) return;
+		if (this.systemPaths.has(path)) return; // Don't push system vault files
 
 		this.changeQueue.set(path, type);
 
@@ -887,5 +903,6 @@ export class SyncEngine {
 		this.changeQueue.clear();
 		this.configFileCache.clear();
 		this.ignorePaths.clear();
+		this.systemPaths.clear();
 	}
 }
