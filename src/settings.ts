@@ -14,6 +14,7 @@ export interface SupaBaseJumpSettings {
 	email: string;
 	password: string;
 	vaultId: string;
+	systemVaultId: string;
 	syncOnStartup: boolean;
 	syncConfigFolder: boolean;
 	syncIntervalMinutes: number;
@@ -29,6 +30,7 @@ export const DEFAULT_SETTINGS: SupaBaseJumpSettings = {
 	email: "",
 	password: "",
 	vaultId: "",
+	systemVaultId: "",
 	syncOnStartup: false,
 	syncConfigFolder: true,
 	syncIntervalMinutes: 5,
@@ -318,6 +320,21 @@ export class SupaBaseJumpSettingTab extends PluginSettingTab {
 						this.plugin.settings.vaultId = id;
 						await this.plugin.saveSettings();
 						new Notice("Supabase jump: vault ID generated");
+					}),
+			);
+
+		new Setting(containerEl)
+			.setName("System vault ID")
+			.setDesc(
+				"Optional. If set, the plugin will also pull notes from this vault ID (read-only). Used for system-generated notes from translation layers.",
+			)
+			.addText((text) =>
+				text
+					.setPlaceholder("loove-system")
+					.setValue(this.plugin.settings.systemVaultId)
+					.onChange(async (value) => {
+						this.plugin.settings.systemVaultId = value.trim();
+						await this.plugin.saveSettings();
 					}),
 			);
 
