@@ -61,6 +61,7 @@ export interface SyncHost {
 	readonly vault: Vault;
 	readonly settings: {
 		vaultId: string;
+		systemVaultId: string;
 		syncOnStartup: boolean;
 		syncConfigFolder: boolean;
 		syncIntervalMinutes: number;
@@ -85,6 +86,7 @@ export class SyncEngine {
 	private configWatcherId: number | null = null;
 	private configFileCache = new Map<string, number>();
 	private ignorePaths = new Set<string>();
+	private systemPaths = new Set<string>();
 	private realtimeReconnectTimer: number | null = null;
 
 	// Injected by main.ts after both managers are created.
@@ -478,7 +480,7 @@ export class SyncEngine {
 	}
 
 	async fetchOnly(): Promise<void> {
-		const { vaultId } = this.host.settings;
+		const { vaultId, systemVaultId } = this.host.settings;
 
 		if (!vaultId) {
 			new Notice("Supabase jump: vault ID is not set - cannot fetch");
@@ -489,10 +491,16 @@ export class SyncEngine {
 		const errors: string[] = [];
 
 		try {
+			// Build vault ID filter: always include user vault, optionally include system vault
+			const vaultIds = [vaultId];
+			if (systemVaultId && systemVaultId !== vaultId) {
+				vaultIds.push(systemVaultId);
+			}
+
 			const { data, error } = await this.client
 				.from(DB_TABLE)
 				.select("*")
-				.eq("vault_id", vaultId)
+				.in("vault_id", vaultIds)
 				.eq("deleted", false);
 
 			if (error)
@@ -510,6 +518,10 @@ export class SyncEngine {
 				if (row.mtime > localMtime) {
 					try {
 						await this.pullFile(row);
+						// Track system vault files to prevent push-back
+						if (row.vault_id === systemVaultId && systemVaultId) {
+							this.systemPaths.add(row.path);
+						}
 					} catch {
 						errors.push(row.path);
 					}
@@ -534,7 +546,7 @@ export class SyncEngine {
 	}
 
 	async fullSync(): Promise<void> {
-		const { vaultId } = this.host.settings;
+		const { vaultId, systemVaultId } = this.host.settings;
 
 		if (!vaultId) {
 			new Notice("Supabase jump: vault ID is not set - cannot sync");
@@ -545,10 +557,16 @@ export class SyncEngine {
 		const errors: string[] = [];
 
 		try {
+			// Build vault ID filter: always include user vault, optionally include system vault
+			const vaultIds = [vaultId];
+			if (systemVaultId && systemVaultId !== vaultId) {
+				vaultIds.push(systemVaultId);
+			}
+
 			const { data, error } = await this.client
 				.from(DB_TABLE)
 				.select("*")
-				.eq("vault_id", vaultId)
+				.in("vault_id", vaultIds)
 				.eq("deleted", false);
 
 			if (error)
@@ -567,6 +585,8 @@ export class SyncEngine {
 
 			for (const file of localFiles) {
 				const remote = remoteMap.get(file.path);
+				// Don't push files that belong to the system vault
+				if (remote && remote.vault_id === systemVaultId && systemVaultId) continue;
 				if (!remote || file.stat.mtime > remote.mtime) {
 					try {
 						await this.pushFile(file);
@@ -610,6 +630,10 @@ export class SyncEngine {
 				if (row.mtime > localMtime) {
 					try {
 						await this.pullFile(row);
+						// Track system vault files to prevent push-back
+						if (row.vault_id === systemVaultId && systemVaultId) {
+							this.systemPaths.add(row.path);
+						}
 					} catch {
 						errors.push(row.path);
 					}
@@ -635,9 +659,48 @@ export class SyncEngine {
 	}
 
 	startRealtimeListener(): void {
-		const { vaultId } = this.host.settings;
+		const { vaultId, systemVaultId } = this.host.settings;
 		if (!vaultId) return;
 
+		const handleError = (status: string) => {
+			if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") {
+				console.error(
+					`Supabase jump: Realtime channel ${status.toLowerCase()} - reconnecting in ${REALTIME_RECONNECT_MS / 1000}s`,
+				);
+				this.host.setStatus("error");
+				new Notice(
+					`Supabase jump: Realtime disconnected - reconnecting in ${REALTIME_RECONNECT_MS / 1000}s…`,
+				);
+				if (this.realtimeReconnectTimer !== null) return;
+				this.realtimeReconnectTimer = window.setTimeout(() => {
+					this.realtimeReconnectTimer = null;
+					if (!this.client) return;
+					void this.client.removeAllChannels().then(() => {
+						this.startRealtimeListener();
+					});
+				}, REALTIME_RECONNECT_MS);
+			} else if (status === "SUBSCRIBED") {
+				this.host.setStatus("synced");
+			}
+		};
+
+		const handlePayload = (payload: {
+			eventType: string;
+			new: Partial<VaultFileRow>;
+			old: Partial<VaultFileRow>;
+		}) => {
+			this.handleRealtimeEvent(payload).catch((err) => {
+				console.error(
+					"Supabase jump: Realtime handler error",
+					err,
+				);
+				new Notice(
+					`Supabase jump: Realtime handler error - ${err instanceof Error ? err.message : String(err)}`,
+				);
+			});
+		};
+
+		// Subscribe to user vault changes
 		this.client
 			.channel(`vault-${vaultId}`)
 			.on<VaultFileRow>(
@@ -648,39 +711,26 @@ export class SyncEngine {
 					table: DB_TABLE,
 					filter: `vault_id=eq.${vaultId}`,
 				},
-				(payload) => {
-					this.handleRealtimeEvent(payload).catch((err) => {
-						console.error(
-							"Supabase jump: Realtime handler error",
-							err,
-						);
-						new Notice(
-							`Supabase jump: Realtime handler error - ${err instanceof Error ? err.message : String(err)}`,
-						);
-					});
-				},
+				handlePayload,
 			)
-			.subscribe((status: string) => {
-				if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") {
-					console.error(
-						`Supabase jump: Realtime channel ${status.toLowerCase()} - reconnecting in ${REALTIME_RECONNECT_MS / 1000}s`,
-					);
-					this.host.setStatus("error");
-					new Notice(
-						`Supabase jump: Realtime disconnected - reconnecting in ${REALTIME_RECONNECT_MS / 1000}s…`,
-					);
-					if (this.realtimeReconnectTimer !== null) return;
-					this.realtimeReconnectTimer = window.setTimeout(() => {
-						this.realtimeReconnectTimer = null;
-						if (!this.client) return;
-						void this.client.removeAllChannels().then(() => {
-							this.startRealtimeListener();
-						});
-					}, REALTIME_RECONNECT_MS);
-				} else if (status === "SUBSCRIBED") {
-					this.host.setStatus("synced");
-				}
-			});
+			.subscribe(handleError);
+
+		// Subscribe to system vault changes (if configured)
+		if (systemVaultId && systemVaultId !== vaultId) {
+			this.client
+				.channel(`vault-system-${systemVaultId}`)
+				.on<VaultFileRow>(
+					"postgres_changes",
+					{
+						event: "*",
+						schema: "public",
+						table: DB_TABLE,
+						filter: `vault_id=eq.${systemVaultId}`,
+					},
+					handlePayload,
+				)
+				.subscribe(handleError);
+		}
 	}
 
 	private async handleRealtimeEvent(payload: {
@@ -791,6 +841,7 @@ export class SyncEngine {
 
 	queueChange(path: string, type: "push" | "delete"): void {
 		if (this.shouldSkip(path) || this.ignorePaths.has(path)) return;
+		if (this.systemPaths.has(path)) return; // Don't push system vault files
 
 		this.changeQueue.set(path, type);
 
@@ -852,5 +903,6 @@ export class SyncEngine {
 		this.changeQueue.clear();
 		this.configFileCache.clear();
 		this.ignorePaths.clear();
+		this.systemPaths.clear();
 	}
 }
