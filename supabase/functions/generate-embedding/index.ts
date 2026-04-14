@@ -107,7 +107,7 @@ Deno.serve(async (req: Request) => {
 
       await sql`
         update public.vault_files
-        set embedding = ${vectorLiteral(embedding)}::extensions.vector,
+        set embedding = ${vectorLiteral(embedding)}::vector,
             updated_at = now()
         where id = ${rowId}
       `

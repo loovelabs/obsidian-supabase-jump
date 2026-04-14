@@ -23,14 +23,65 @@ CREATE EXTENSION IF NOT EXISTS pgmq;
 CREATE EXTENSION IF NOT EXISTS pg_net WITH SCHEMA extensions;
 CREATE EXTENSION IF NOT EXISTS pg_cron;
 
--- ── Step 2: Add embedding column to vault_files ────────────────────────────
+-- ── Step 2: Add or realign embedding column on vault_files ─────────────────
+-- Live projects may already have `embedding vector(1536)` from earlier tests.
+-- If no embeddings have been materialized yet, we safely realign to 384 dims
+-- for Supabase's built-in `gte-small` model. If populated 1536-dim vectors
+-- already exist, stop instead of corrupting live data.
 
-ALTER TABLE public.vault_files
-  ADD COLUMN IF NOT EXISTS embedding extensions.vector(384);
+DO $$
+DECLARE
+  current_type text;
+  embedded_rows bigint;
+BEGIN
+  SELECT format_type(a.atttypid, a.atttypmod)
+  INTO current_type
+  FROM pg_attribute a
+  JOIN pg_class c ON c.oid = a.attrelid
+  JOIN pg_namespace n ON n.oid = c.relnamespace
+  WHERE n.nspname = 'public'
+    AND c.relname = 'vault_files'
+    AND a.attname = 'embedding'
+    AND a.attnum > 0
+    AND NOT a.attisdropped;
+
+  IF current_type IS NULL THEN
+    ALTER TABLE public.vault_files
+      ADD COLUMN embedding vector(384);
+  ELSIF current_type <> 'vector(384)' THEN
+    SELECT count(*) INTO embedded_rows
+    FROM public.vault_files
+    WHERE embedding IS NOT NULL;
+
+    IF embedded_rows > 0 THEN
+      RAISE EXCEPTION 'vault_files.embedding is %, with % populated rows. Manual migration required before switching to vector(384).', current_type, embedded_rows;
+    END IF;
+
+    DROP VIEW IF EXISTS public.loove_embedding_stats;
+    DROP INDEX IF EXISTS public.idx_vault_files_embedding_hnsw;
+    DROP INDEX IF EXISTS public.vault_files_embedding_idx;
+
+    ALTER TABLE public.vault_files
+      ALTER COLUMN embedding TYPE vector(384);
+  END IF;
+END;
+$$;
+
+CREATE OR REPLACE VIEW public.loove_embedding_stats AS
+SELECT
+  vault_id,
+  count(*) AS total_files,
+  count(embedding) AS embedded_files,
+  count(*) - count(embedding) AS pending_files,
+  round(100.0 * count(embedding)::numeric / GREATEST(count(*), 1)::numeric, 1) AS coverage_pct,
+  max(embedding_updated_at) AS last_embedding_at
+FROM public.vault_files
+WHERE deleted = false
+GROUP BY vault_id;
 
 CREATE INDEX IF NOT EXISTS vault_files_embedding_idx
   ON public.vault_files
-  USING ivfflat (embedding extensions.vector_cosine_ops)
+  USING ivfflat (embedding vector_cosine_ops)
   WITH (lists = 100);
 
 -- ── Step 3: Utility schema and functions ───────────────────────────────────
@@ -87,13 +138,9 @@ $$;
 
 DO $$
 BEGIN
-  PERFORM pgmq.create('embedding_jobs');
-EXCEPTION
-  WHEN duplicate_table OR duplicate_object THEN NULL;
-  WHEN OTHERS THEN
-    IF SQLERRM NOT ILIKE '%already exists%' THEN
-      RAISE;
-    END IF;
+  IF to_regclass('pgmq.q_embedding_jobs') IS NULL THEN
+    PERFORM pgmq.create('embedding_jobs');
+  END IF;
 END;
 $$;
 
@@ -157,7 +204,7 @@ SELECT cron.schedule(
 -- ── Step 7: Semantic search over vault_files ───────────────────────────────
 
 CREATE OR REPLACE FUNCTION loove_semantic_search(
-  p_query_embedding extensions.vector(384),
+  p_query_embedding vector(384),
   p_match_threshold double precision DEFAULT 0.7,
   p_match_count integer DEFAULT 10,
   p_filter_tags text[] DEFAULT NULL,
@@ -205,7 +252,7 @@ $$;
 -- incompatible embedding spaces.
 
 CREATE OR REPLACE FUNCTION loove_unified_search(
-  p_query_embedding extensions.vector(384),
+  p_query_embedding vector(384),
   p_match_threshold double precision DEFAULT 0.7,
   p_match_count integer DEFAULT 10
 )
